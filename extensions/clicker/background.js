@@ -8,3 +8,20 @@ chrome.commands.onCommand.addListener((command) => {
     });
   });
 });
+
+// --- Скачать картинку по правому клику ---
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "download-image",
+    title: "Скачать через Автокликер",
+    contexts: ["image"],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId !== "download-image" || !info.srcUrl) return;
+  chrome.downloads.download({ url: info.srcUrl }, () => {
+    void chrome.runtime.lastError; // например, картинка — data:URL необычного вида или сеть недоступна
+  });
+});
