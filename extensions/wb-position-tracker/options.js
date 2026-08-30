@@ -121,7 +121,15 @@ function bindHandlers() {
       return;
     }
 
-    trackedItems.push({ id: genId(), nmId, name, keywords });
+    const existing = trackedItems.find((i) => String(i.nmId) === String(nmId));
+    if (existing) {
+      const merged = new Set([...existing.keywords, ...keywords]);
+      existing.keywords = Array.from(merged);
+      message.textContent = `Добавлены ключевые слова к «${existing.name}».`;
+    } else {
+      trackedItems.push({ id: genId(), nmId, name, keywords });
+      message.textContent = "Добавлено.";
+    }
     await saveTrackedItems();
     renderItemsList();
     renderHistoryFilter();
@@ -129,7 +137,6 @@ function bindHandlers() {
     document.getElementById("nmId").value = "";
     document.getElementById("itemName").value = "";
     document.getElementById("keywords").value = "";
-    message.textContent = "Добавлено.";
   });
 
   document.getElementById("historyFilter").addEventListener("change", renderHistoryTable);

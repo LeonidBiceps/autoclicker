@@ -353,15 +353,25 @@ function refreshSeqMarkers() {
 
 function onRecordClick(e) {
   recordedEvents.push({ x: Math.round(e.x), y: Math.round(e.y), t: Date.now() - recordStartTime });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("recording:progress", recordedEvents.length);
+  }
 }
 
 function startRecording() {
-  if (recording) return;
-  recording = true;
-  recordedEvents = [];
-  recordStartTime = Date.now();
-  uIOhook.on("click", onRecordClick);
-  uIOhook.start();
+  if (recording) return { ok: true };
+  try {
+    recordedEvents = [];
+    recordStartTime = Date.now();
+    uIOhook.on("click", onRecordClick);
+    uIOhook.start();
+    recording = true;
+    return { ok: true };
+  } catch (e) {
+    uIOhook.removeListener("click", onRecordClick);
+    recording = false;
+    return { ok: false, error: e.message };
+  }
 }
 
 function stopRecordingInternal() {
@@ -571,8 +581,7 @@ ipcMain.handle("schedule:cancel", () => {
 
 ipcMain.handle("macro:startRecording", () => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
-  startRecording();
-  return { ok: true };
+  return startRecording();
 });
 
 ipcMain.handle("macro:stopRecording", () => {

@@ -121,20 +121,66 @@ h2 [title] {
   font-size: 9px;
 }
 
-/* --- Вкладки: перенос строк вместо горизонтального скролла --- */
+/* --- Главный экран: сетка карточек-меню вместо вкладок --- */
 
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.home-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
-.tab-btn {
+.menu-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid #262a34;
+  border-radius: 10px;
+  background: #1a1d24;
+  color: #eef0f4;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.menu-card:hover {
+  background: #20242d;
+  border-color: #343946;
+}
+
+.menu-card:active {
+  transform: scale(0.98);
+}
+
+.menu-card__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.menu-card__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.menu-card__desc {
+  font-size: 11px;
+  color: #9aa0ad;
+  line-height: 1.4;
+}
+
+/* --- Экран функции: хедер с кнопкой "Назад" --- */
+
+.panel-header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 8px 13px;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.back-btn {
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
   border: none;
@@ -143,26 +189,17 @@ h2 [title] {
   color: #9aa0ad;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.tab-btn:hover {
+.back-btn:hover {
   background: #22252d;
   color: #eef0f4;
 }
 
-.tab-btn:active {
-  transform: scale(0.96);
-}
-
-.tab-btn.active {
-  background: #2d6cdf;
-  color: white;
-}
-
-.tab-icon {
-  font-size: 13px;
-  line-height: 1;
+.panel-title {
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .tab-panel {

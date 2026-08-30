@@ -58,3 +58,29 @@ h1 {
 .secondary-btn:hover {
   background: #343946;
 }
+
+.field {
+  margin: 10px 0;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  color: #9aa0ad;
+  margin-bottom: 4px;
+}
+
+.field input[type="text"] {
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 12px;
+  border: 1px solid #343946;
+  border-radius: 7px;
+  background: #22252d;
+  color: #eef0f4;
+  font-family: inherit;
+}
+
+#quickAddBtn {
+  margin-top: 0;
+}

@@ -27,4 +27,5 @@ contextBridge.exposeInMainWorld("api", {
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),
   onRecordingStopped: (callback) => ipcRenderer.on("recording:stopped", (_e, events) => callback(events)),
+  onRecordingProgress: (callback) => ipcRenderer.on("recording:progress", (_e, count) => callback(count)),
 });

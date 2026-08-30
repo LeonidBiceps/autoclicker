@@ -51,16 +51,45 @@
       </div>
     </section>
 
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="click"><span class="tab-icon">🖱</span> Клик</button>
-      <button class="tab-btn" data-tab="hotkeys"><span class="tab-icon">⌨</span> Хоткеи</button>
-      <button class="tab-btn" data-tab="macros"><span class="tab-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
-      <button class="tab-btn" data-tab="binds"><span class="tab-icon">⌨️</span> Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></button>
-      <button class="tab-btn" data-tab="profiles"><span class="tab-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
-      <button class="tab-btn" data-tab="system"><span class="tab-icon">⚙</span> Система</button>
+    <div id="homeMenu" class="home-menu">
+      <button class="menu-card" data-target="click">
+        <span class="menu-card__icon">🖱</span>
+        <span class="menu-card__title">Клик</span>
+        <span class="menu-card__desc">Куда и чем кликать, скорость, триггер по цвету</span>
+      </button>
+      <button class="menu-card" data-target="hotkeys">
+        <span class="menu-card__icon">⌨</span>
+        <span class="menu-card__title">Хоткеи</span>
+        <span class="menu-card__desc">Глобальные хоткеи, автостоп, отложенный старт</span>
+      </button>
+      <button class="menu-card" data-target="macros">
+        <span class="menu-card__icon">🎬</span>
+        <span class="menu-card__title">Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></span>
+        <span class="menu-card__desc">Запись и воспроизведение настоящих кликов</span>
+      </button>
+      <button class="menu-card" data-target="binds">
+        <span class="menu-card__icon">⌨️</span>
+        <span class="menu-card__title">Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></span>
+        <span class="menu-card__desc">Хоткей печатает заданный текст</span>
+      </button>
+      <button class="menu-card" data-target="profiles">
+        <span class="menu-card__icon">📁</span>
+        <span class="menu-card__title">Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></span>
+        <span class="menu-card__desc">Пресеты настроек, экспорт/импорт</span>
+      </button>
+      <button class="menu-card" data-target="system">
+        <span class="menu-card__icon">⚙</span>
+        <span class="menu-card__title">Система</span>
+        <span class="menu-card__desc">Автозапуск, поддержать разработку</span>
+      </button>
     </div>
 
-    <div class="tab-panel" data-panel="click">
+    <div id="panelHeader" class="panel-header" hidden>
+      <button id="backBtn" class="back-btn">← Назад</button>
+      <span id="panelTitle" class="panel-title"></span>
+    </div>
+
+    <div class="tab-panel" data-panel="click" hidden>
       <section>
         <h2>🎯 Куда кликать</h2>
         <div class="field">

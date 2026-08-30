@@ -44,27 +44,49 @@ function keyLabel(info) {
   return info.name;
 }
 
-// --- Tabs ---
+// --- Навигация: главный экран с меню -> экран конкретной функции ---
 
-function initTabs() {
-  const tabBtns = document.querySelectorAll(".tab-btn");
-  tabBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      tabBtns.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      document.querySelectorAll(".tab-panel").forEach((panel) => {
-        const show = panel.dataset.panel === btn.dataset.tab;
-        panel.hidden = !show;
-        if (show) {
-          // Перезапускаем CSS-анимацию появления (иначе сыграет только один раз).
-          panel.classList.remove("tab-panel");
-          void panel.offsetWidth;
-          panel.classList.add("tab-panel");
-        }
-      });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
+const PANEL_TITLES = {
+  click: "🖱 Клик",
+  hotkeys: "⌨ Хоткеи",
+  macros: "🎬 Макросы",
+  binds: "⌨️ Бинды",
+  profiles: "📁 Профили",
+  system: "⚙ Система",
+};
+
+function showHome() {
+  document.getElementById("homeMenu").hidden = false;
+  document.getElementById("panelHeader").hidden = true;
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.hidden = true;
   });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showPanel(name) {
+  document.getElementById("homeMenu").hidden = true;
+  document.getElementById("panelHeader").hidden = false;
+  document.getElementById("panelTitle").textContent = PANEL_TITLES[name] || "";
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const show = panel.dataset.panel === name;
+    panel.hidden = !show;
+    if (show) {
+      // Перезапускаем CSS-анимацию появления (иначе сыграет только один раз).
+      panel.classList.remove("tab-panel");
+      void panel.offsetWidth;
+      panel.classList.add("tab-panel");
+    }
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function initNavigation() {
+  document.querySelectorAll(".menu-card").forEach((btn) => {
+    btn.addEventListener("click", () => showPanel(btn.dataset.target));
+  });
+  document.getElementById("backBtn").addEventListener("click", showHome);
+  showHome();
 }
 
 // --- Sliders (range <-> number two-way sync) ---
@@ -337,7 +359,7 @@ function setRecordingUI(active) {
   document.getElementById("recordBtn").disabled = active || !proUnlocked;
   document.getElementById("stopRecordBtn").disabled = !active;
   if (active) {
-    document.getElementById("recordStatus").textContent = `Идёт запись… кликай, потом жми «Остановить» или ${settings.recordHotkey}.`;
+    document.getElementById("recordStatus").textContent = `Идёт запись… 0 кликов. Кликай, потом жми «Остановить» или ${settings.recordHotkey}.`;
   }
 }
 
@@ -359,7 +381,7 @@ function renderStatus(status) {
 function bindHandlers() {
   const f = fields();
 
-  initTabs();
+  initNavigation();
 
   bindSlider("intervalMs", (v) => save({ intervalMs: Math.max(10, v || 100) }));
   bindSlider("jitterMs", (v) => save({ jitterMs: Math.max(0, v || 0) }));
@@ -573,7 +595,14 @@ function bindHandlers() {
   document.getElementById("recordBtn").addEventListener("click", async () => {
     if (!proUnlocked) return;
     const result = await window.api.startRecording();
-    if (result.ok) setRecordingUI(true);
+    if (result.ok) {
+      setRecordingUI(true);
+    } else {
+      document.getElementById("recordStatus").textContent =
+        result.error === "pro-required"
+          ? "Запись макросов — Pro-функция."
+          : `Не удалось начать запись: ${result.error || "неизвестная ошибка"}.`;
+    }
   });
   document.getElementById("stopRecordBtn").addEventListener("click", async () => {
     const result = await window.api.stopRecording();
@@ -612,6 +641,12 @@ function bindHandlers() {
     setTimeout(() => (note.hidden = true), 4000);
   });
   window.api.onRecordingStopped((events) => promptAndSaveMacro(events));
+  window.api.onRecordingProgress((count) => {
+    const status = document.getElementById("recordStatus");
+    if (!document.getElementById("stopRecordBtn").disabled) {
+      status.textContent = `Идёт запись… ${count} кликов. Кликай, потом жми «Остановить» или ${settings.recordHotkey}.`;
+    }
+  });
 }
 
 async function init() {
