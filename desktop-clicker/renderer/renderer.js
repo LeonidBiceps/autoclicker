@@ -342,6 +342,7 @@ async function promptAndSaveMacro(events) {
     document.getElementById("recordStatus").textContent = "Ничего не записано (не было кликов).";
     return;
   }
+  document.getElementById("recordStatus").textContent = `Запись остановлена — задай имя в открывшемся окне.`;
   openMacroSaveModal(events);
 }
 
@@ -604,9 +605,13 @@ function bindHandlers() {
     if (!name || !pendingMacroEvents) return;
     const events = pendingMacroEvents;
     closeMacroSaveModal();
-    settings.macros = await window.api.saveMacro(name, events);
-    renderMacroList();
-    document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
+    try {
+      settings.macros = await window.api.saveMacro(name, events);
+      renderMacroList();
+      document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
+    } catch (e) {
+      document.getElementById("recordStatus").textContent = `Не удалось сохранить: ${e.message}`;
+    }
   });
   document.getElementById("macroSaveCancelBtn").addEventListener("click", () => {
     closeMacroSaveModal();
@@ -615,6 +620,17 @@ function bindHandlers() {
   document.getElementById("macroSaveName").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("macroSaveConfirmBtn").click();
     if (e.key === "Escape") document.getElementById("macroSaveCancelBtn").click();
+  });
+  // Запасные пути закрытия — на случай если по каким-то причинам сама модалка "зависнет"
+  // и надо выбраться без перезапуска приложения: клик по тёмному фону и Esc откуда угодно
+  // в документе (не только пока фокус в поле имени).
+  document.getElementById("macroSaveOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "macroSaveOverlay") document.getElementById("macroSaveCancelBtn").click();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !document.getElementById("macroSaveOverlay").hidden) {
+      document.getElementById("macroSaveCancelBtn").click();
+    }
   });
 
   // Бинды
