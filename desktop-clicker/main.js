@@ -407,8 +407,10 @@ async function typeBindText(text) {
 
 function createWindow(startHidden) {
   mainWindow = new BrowserWindow({
-    width: 480,
-    height: 860,
+    width: 720,
+    height: 720,
+    minWidth: 560,
+    minHeight: 480,
     show: !startHidden,
     icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
@@ -447,7 +449,7 @@ function updateTrayMenu() {
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, "icon.png"));
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip("Автокликер");
+  tray.setToolTip("МультиТул");
   tray.on("click", () => mainWindow.show());
   updateTrayMenu();
 }

@@ -1,7 +1,7 @@
 # Студия HTML5-игр для Яндекс Игр
 
-> **Ищешь Автокликер?** [Скачать расширение и desktop-версию](https://github.com/LeonidBiceps/autoclicker/releases/latest)
-> — исходники в [extensions/clicker](extensions/clicker) (браузер) и [desktop-clicker](desktop-clicker) (вне браузера).
+> **Ищешь Автокликер / МультиТул?** [Скачать расширение и desktop-версию](https://github.com/LeonidBiceps/autoclicker/releases/latest)
+> — исходники в [extensions/clicker](extensions/clicker) (браузер) и [desktop-clicker](desktop-clicker) (МультиТул, вне браузера).
 
 Монорепозиторий портфельной студии: общее ядро + сколько угодно игр на нём.
 Расчёт не на одну игру-хит, а на серию — каждая следующая стартует из готового

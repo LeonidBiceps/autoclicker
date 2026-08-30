@@ -44,30 +44,12 @@ function keyLabel(info) {
   return info.name;
 }
 
-// --- Навигация: главный экран с меню -> экран конкретной функции ---
-
-const PANEL_TITLES = {
-  click: "🖱 Клик",
-  hotkeys: "⌨ Хоткеи",
-  macros: "🎬 Макросы",
-  binds: "⌨️ Бинды",
-  profiles: "📁 Профили",
-  system: "⚙ Система",
-};
-
-function showHome() {
-  document.getElementById("homeMenu").hidden = false;
-  document.getElementById("panelHeader").hidden = true;
-  document.querySelectorAll(".tab-panel").forEach((panel) => {
-    panel.hidden = true;
-  });
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
+// --- Навигация: постоянный сайдбар, справа всегда ровно одна "страница" ---
 
 function showPanel(name) {
-  document.getElementById("homeMenu").hidden = true;
-  document.getElementById("panelHeader").hidden = false;
-  document.getElementById("panelTitle").textContent = PANEL_TITLES[name] || "";
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.target === name);
+  });
   document.querySelectorAll(".tab-panel").forEach((panel) => {
     const show = panel.dataset.panel === name;
     panel.hidden = !show;
@@ -78,15 +60,14 @@ function showPanel(name) {
       panel.classList.add("tab-panel");
     }
   });
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  document.querySelector(".content").scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function initNavigation() {
-  document.querySelectorAll(".menu-card").forEach((btn) => {
+  document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.addEventListener("click", () => showPanel(btn.dataset.target));
   });
-  document.getElementById("backBtn").addEventListener("click", showHome);
-  showHome();
+  showPanel("home");
 }
 
 // --- Sliders (range <-> number two-way sync) ---
@@ -339,20 +320,29 @@ function renderBindList() {
   });
 }
 
+let pendingMacroEvents = null;
+
+function openMacroSaveModal(events) {
+  pendingMacroEvents = events;
+  document.getElementById("macroSaveInfo").textContent = `Записано кликов: ${events.length}.`;
+  const nameInput = document.getElementById("macroSaveName");
+  nameInput.value = "";
+  document.getElementById("macroSaveOverlay").hidden = false;
+  nameInput.focus();
+}
+
+function closeMacroSaveModal() {
+  pendingMacroEvents = null;
+  document.getElementById("macroSaveOverlay").hidden = true;
+}
+
 async function promptAndSaveMacro(events) {
   setRecordingUI(false);
   if (!events || events.length === 0) {
     document.getElementById("recordStatus").textContent = "Ничего не записано (не было кликов).";
     return;
   }
-  const name = window.prompt(`Записано кликов: ${events.length}. Название макроса:`, "");
-  if (!name) {
-    document.getElementById("recordStatus").textContent = "Запись не сохранена.";
-    return;
-  }
-  settings.macros = await window.api.saveMacro(name, events);
-  renderMacroList();
-  document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
+  openMacroSaveModal(events);
 }
 
 function setRecordingUI(active) {
@@ -607,6 +597,24 @@ function bindHandlers() {
   document.getElementById("stopRecordBtn").addEventListener("click", async () => {
     const result = await window.api.stopRecording();
     await promptAndSaveMacro(result.events);
+  });
+
+  document.getElementById("macroSaveConfirmBtn").addEventListener("click", async () => {
+    const name = document.getElementById("macroSaveName").value.trim();
+    if (!name || !pendingMacroEvents) return;
+    const events = pendingMacroEvents;
+    closeMacroSaveModal();
+    settings.macros = await window.api.saveMacro(name, events);
+    renderMacroList();
+    document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
+  });
+  document.getElementById("macroSaveCancelBtn").addEventListener("click", () => {
+    closeMacroSaveModal();
+    document.getElementById("recordStatus").textContent = "Запись не сохранена.";
+  });
+  document.getElementById("macroSaveName").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("macroSaveConfirmBtn").click();
+    if (e.key === "Escape") document.getElementById("macroSaveCancelBtn").click();
   });
 
   // Бинды

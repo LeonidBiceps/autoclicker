@@ -1,8 +1,8 @@
 {
   "name": "autoclicker-desktop",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Автокликер вне браузера — работает в любом окне/игре Windows.",
+  "description": "МультиТул — автоматизация под Windows: автокликер, макросы, бинды, триггер по цвету. Работает в любом окне/игре.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.example.autoclicker-desktop",
-    "productName": "Автокликер",
+    "productName": "МультиТул",
     "npmRebuild": false,
     "win": {
       "target": "portable",
