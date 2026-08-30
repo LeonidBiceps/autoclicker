@@ -4,8 +4,6 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeI
 // Пустая строка = кнопка доната покажет честное сообщение «ссылка ещё не настроена», а не тихо
 // откроет пустоту или чужую страницу.
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
-const REPO = "LeonidBiceps/autoclicker";
-const APP_VERSION = require("./package.json").version;
 const path = require("path");
 const fs = require("fs");
 const { Store, PROFILE_FIELDS } = require("./store");
@@ -536,54 +534,6 @@ ipcMain.handle("color:sample", async (event, point) => {
 ipcMain.handle("donate:open", () => {
   if (!DONATE_URL) return { ok: false, error: "not-configured" };
   shell.openExternal(DONATE_URL);
-  return { ok: true };
-});
-
-function parseVersion(v) {
-  const parts = String(v).split(".").map((n) => parseInt(n, 10));
-  return parts.every((n) => Number.isFinite(n)) ? parts : null;
-}
-
-function isNewerVersion(latest, current) {
-  const a = parseVersion(latest);
-  const b = parseVersion(current);
-  if (!a || !b) return false;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i] || 0;
-    const y = b[i] || 0;
-    if (x > y) return true;
-    if (x < y) return false;
-  }
-  return false;
-}
-
-ipcMain.handle("update:check", async () => {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json" },
-    });
-    if (!res.ok) return { hasUpdate: false, error: `http-${res.status}` };
-    const data = await res.json();
-    const asset = (data.assets || []).find((a) => /^Autoclicker-\d+\.\d+\.\d+\.exe$/.test(a.name));
-    if (!asset) return { hasUpdate: false, error: "no-asset" };
-    const match = asset.name.match(/^Autoclicker-(\d+\.\d+\.\d+)\.exe$/);
-    const latestVersion = match[1];
-    return {
-      hasUpdate: isNewerVersion(latestVersion, APP_VERSION),
-      latestVersion,
-      currentVersion: APP_VERSION,
-      downloadUrl: asset.browser_download_url,
-    };
-  } catch (e) {
-    return { hasUpdate: false, error: e.message };
-  }
-});
-
-ipcMain.handle("update:openDownload", (event, url) => {
-  if (typeof url !== "string" || !url.startsWith(`https://github.com/${REPO}/`)) {
-    return { ok: false };
-  }
-  shell.openExternal(url);
   return { ok: true };
 });
 

@@ -11,8 +11,6 @@ contextBridge.exposeInMainWorld("api", {
   sampleColor: (point) => ipcRenderer.invoke("color:sample", point),
   captureKey: () => ipcRenderer.invoke("key:capture"),
   openDonate: () => ipcRenderer.invoke("donate:open"),
-  checkForUpdate: () => ipcRenderer.invoke("update:check"),
-  openUpdateDownload: (url) => ipcRenderer.invoke("update:openDownload", url),
 
   setSchedule: (hhmm) => ipcRenderer.invoke("schedule:set", hhmm),
   cancelSchedule: () => ipcRenderer.invoke("schedule:cancel"),

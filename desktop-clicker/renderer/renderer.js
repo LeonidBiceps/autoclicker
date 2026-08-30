@@ -614,22 +614,6 @@ function bindHandlers() {
   window.api.onRecordingStopped((events) => promptAndSaveMacro(events));
 }
 
-async function checkForUpdate() {
-  try {
-    const result = await window.api.checkForUpdate();
-    if (!result.hasUpdate) return;
-    const banner = document.getElementById("updateBanner");
-    document.getElementById("updateBannerText").textContent =
-      `Доступна новая версия ${result.latestVersion} (у тебя ${result.currentVersion}).`;
-    banner.hidden = false;
-    document.getElementById("updateDownloadBtn").addEventListener("click", () => {
-      window.api.openUpdateDownload(result.downloadUrl);
-    });
-  } catch (e) {
-    // Тихо игнорируем — нет интернета или GitHub недоступен, не блокируем работу приложения.
-  }
-}
-
 async function init() {
   const result = await window.api.getSettings();
   settings = result.settings;
@@ -644,7 +628,6 @@ async function init() {
   renderStatus(status);
 
   document.getElementById("machineIdValue").textContent = await window.api.getMachineId();
-  checkForUpdate();
 }
 
 init();

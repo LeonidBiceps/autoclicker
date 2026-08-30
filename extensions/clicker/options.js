@@ -1,4 +1,4 @@
-const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.3.0/Autoclicker-1.3.0.exe";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.3.1/Autoclicker-1.3.1.exe";
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const REPO = "LeonidBiceps/autoclicker";
 
@@ -317,22 +317,28 @@ function isNewerVersion(latest, current) {
 
 async function checkForExtensionUpdate() {
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+    // Не все релизы содержат .zip расширения (иногда обновляется только desktop-версия) — поэтому
+    // смотрим список релизов, а не только /releases/latest, и берём первый (самый свежий), где
+    // такой файл реально есть.
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`);
     if (!res.ok) return;
-    const data = await res.json();
-    const asset = (data.assets || []).find((a) => /^Autoclicker-Extension-\d+\.\d+\.\d+\.zip$/.test(a.name));
+    const releases = await res.json();
+    let asset = null;
+    for (const release of releases) {
+      asset = (release.assets || []).find((a) => /^Autoclicker-Extension-\d+\.\d+\.\d+\.zip$/.test(a.name));
+      if (asset) break;
+    }
     if (!asset) return;
     const latestVersion = asset.name.match(/^Autoclicker-Extension-(\d+\.\d+\.\d+)\.zip$/)[1];
     const currentVersion = chrome.runtime.getManifest().version;
     if (!isNewerVersion(latestVersion, currentVersion)) return;
 
-    document.getElementById("updateBannerText").textContent =
-      `Доступна новая версия расширения ${latestVersion} (у тебя ${currentVersion}). Скачай .zip, ` +
-      `распакуй поверх старой папки и нажми «Обновить» на карточке расширения в chrome://extensions.`;
-    document.getElementById("updateBanner").hidden = false;
-    document.getElementById("updateDownloadBtn").addEventListener("click", () => {
-      chrome.tabs.create({ url: asset.browser_download_url });
-    });
+    const banner = document.getElementById("updateBanner");
+    document.getElementById("updateBannerText").textContent = `Вышла версия ${latestVersion} (у тебя ${currentVersion})`;
+    banner.title =
+      "Скачай .zip, распакуй поверх старой папки и нажми «Обновить» на карточке расширения в chrome://extensions.";
+    banner.href = asset.browser_download_url;
+    banner.hidden = false;
   } catch (e) {
     // нет сети или GitHub недоступен — молча пропускаем, это не блокирует работу расширения
   }
