@@ -54,6 +54,10 @@ function render(entries) {
     const sparkline = sparklineSVG(history, { width: 140, height: 28 });
     const safeTitle = escapeHtml(record.title);
     const href = escapeHtml(buildLink(record.url));
+    const originalHtml =
+      record.originalPrice && record.originalPrice > record.price
+        ? `<div class="item-original">Зачёркнутая цена на сайте ${formatPrice(record.originalPrice, record.currency)} — не доказательство скидки, смотри на график</div>`
+        : "";
 
     const el = document.createElement("div");
     el.className = "item";
@@ -72,6 +76,7 @@ function render(entries) {
         </div>
       </div>
       ${sparkline ? `<div class="item-spark">${sparkline}</div>` : ""}
+      ${originalHtml}
       <div class="item-threshold">
         <label>Уведомить, если ниже</label>
         <input type="number" class="threshold-input" data-key="${key}" value="${record.targetPrice ?? ""}" placeholder="—" />

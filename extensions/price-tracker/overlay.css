@@ -43,6 +43,15 @@
   line-height: 0;
 }
 
+.pt-original {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #262a34;
+  color: #d8a24a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .pt-close {
   order: 2;
   border: none;

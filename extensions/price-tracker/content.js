@@ -3,6 +3,44 @@ const RETRY_DELAYS_MS = [500, 2000, 5000];
 
 let dismissedThisPageLoad = false;
 
+// Wildberries — SPA без JSON-LD/meta-тегов цены (проверено вживую: цена подгружается отдельным
+// запросом уже после отрисовки страницы), поэтому читаем прямо с отрисованной карточки товара.
+// Классы вида "priceBlockFinalPrice--AUlzU" — хэш-суффикс у WB меняется между деплоями, но сам
+// префикс стабилен, поэтому матчим через [class*=...], а не точным именем класса.
+function extractFromWildberries() {
+  if (!/(^|\.)wildberries\.ru$/.test(location.hostname)) return null;
+  if (!/\/catalog\/\d+\/detail\.aspx/.test(location.pathname)) return null;
+
+  const finalEl = document.querySelector('[class*="priceBlockFinalPrice"]');
+  if (!finalEl) return null;
+
+  const parseRub = (text) => {
+    const digits = (text || "").replace(/[^\d]/g, "");
+    return digits ? parseInt(digits, 10) : null;
+  };
+
+  const price = parseRub(finalEl.textContent);
+  if (!price) return null;
+
+  const oldEl = document.querySelector('[class*="priceBlockOldPrice"]');
+  const titleEl = document.querySelector('[class*="productTitle"]');
+
+  return {
+    price,
+    currency: "₽",
+    title: titleEl ? titleEl.textContent.trim() : (document.title.split(" купить")[0] || "").trim(),
+    originalPrice: oldEl ? parseRub(oldEl.textContent) : null,
+    marketplace: "Wildberries",
+  };
+}
+
+// Ozon: пока не реализовано — не смог вживую проверить вёрстку карточки товара (эта песочница
+// заблокирована на уровне IP на ozon.ru), а гадать по памяти рискованно, могло устареть. На Ozon
+// пока сработают только общие способы ниже (JSON-LD/meta/itemprop), если сайт их отдаёт.
+function extractFromOzon() {
+  return null;
+}
+
 function extractFromJsonLd() {
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
   for (const script of scripts) {
@@ -79,7 +117,7 @@ function extractFromItemprop() {
 }
 
 function extractPrice() {
-  return extractFromJsonLd() || extractFromMeta() || extractFromItemprop();
+  return extractFromWildberries() || extractFromOzon() || extractFromJsonLd() || extractFromMeta() || extractFromItemprop();
 }
 
 function getStorageKey() {
@@ -133,6 +171,14 @@ function showWidget(record) {
       ? `мин. за всё время: ${formatPrice(min, record.currency)}`
       : "это минимум за всё время";
 
+  let originalLine = "";
+  if (record.originalPrice && record.originalPrice > record.price) {
+    originalLine =
+      history.length > 1
+        ? `<div class="pt-original">Зачёркнутая цена на сайте: ${formatPrice(record.originalPrice, record.currency)} — маркетплейсы часто держат её завышенной постоянно. Доверяй графику ниже, а не ей.</div>`
+        : `<div class="pt-original">Зачёркнутая цена на сайте: ${formatPrice(record.originalPrice, record.currency)} — маркетплейсы часто держат её завышенной постоянно, это не доказательство реальной скидки. История наблюдений начинается с этого захода.</div>`;
+  }
+
   const sparkline = sparklineSVG(history, { width: 140, height: 30 });
 
   const widget = ensureWidget();
@@ -142,6 +188,7 @@ function showWidget(record) {
     ${compareLine}
     <div class="pt-min">${minLine}</div>
     ${sparkline ? `<div class="pt-spark">${sparkline}</div>` : ""}
+    ${originalLine}
   `;
 }
 
@@ -183,6 +230,8 @@ function loadAndUpdate() {
       title: result.title,
       currency: result.currency,
       price: result.price,
+      originalPrice: result.originalPrice ?? null,
+      marketplace: result.marketplace ?? null,
       history,
       lastSeen: now,
       targetPrice: existing?.targetPrice ?? null,
