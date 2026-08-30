@@ -1,4 +1,4 @@
-const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.0.0/Autoclicker-1.0.0.exe";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.1.0/Autoclicker-1.1.0.exe";
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 
 const DEFAULT_SETTINGS = {
