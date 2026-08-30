@@ -5,6 +5,7 @@ const PROFILE_FIELDS = [
   "button",
   "keyToPress",
   "positionJitterPx",
+  "colorTrigger",
   "stopAfterClicks",
   "stopAfterMs",
   "mode",
@@ -111,6 +112,20 @@ function updateModeVisibility() {
   if (settings.mode === "sequence") renderSeqList();
 }
 
+function renderColorTrigger() {
+  const trigger = settings.colorTrigger || {};
+  document.getElementById("colorTriggerEnabled").checked = !!trigger.enabled;
+
+  const swatch = document.getElementById("colorSwatch");
+  swatch.style.background = trigger.color ? `rgb(${trigger.color.r}, ${trigger.color.g}, ${trigger.color.b})` : "";
+
+  const hint = document.getElementById("colorTriggerHint");
+  const parts = [];
+  parts.push(trigger.point ? `Точка: ${trigger.point.x}, ${trigger.point.y}` : "Точка не выбрана.");
+  parts.push(trigger.color ? `Цвет: rgb(${trigger.color.r}, ${trigger.color.g}, ${trigger.color.b})` : "Цвет не взят.");
+  hint.textContent = parts.join(" ");
+}
+
 function updateProUI() {
   document.getElementById("tierBadge").textContent = proUnlocked ? "👑 Pro" : "Free";
   document.getElementById("tierBadge").classList.toggle("pro", proUnlocked);
@@ -130,6 +145,7 @@ function updateProUI() {
   document.getElementById("profilesTabBadge").hidden = proUnlocked;
   document.getElementById("bindsBadge").hidden = proUnlocked;
   document.getElementById("bindsTabBadge").hidden = proUnlocked;
+  document.getElementById("colorTriggerBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -146,12 +162,17 @@ function updateProUI() {
     "bindHotkey",
     "bindText",
     "bindAddBtn",
+    "colorTriggerEnabled",
+    "colorPickPointBtn",
+    "colorSampleBtn",
+    "colorToleranceSlider",
+    "colorTolerance",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
   const proStatus = document.getElementById("proStatus");
   proStatus.textContent = proUnlocked
-    ? "Pro активирован — без лимита кликов, разброс позиции, последовательность точек, макросы, бинды, профили, расписание."
+    ? "Pro активирован — без лимита кликов, разброс позиции, триггер по цвету, последовательность точек, макросы, бинды, профили, расписание."
     : "Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.";
 }
 
@@ -195,6 +216,11 @@ function loadIntoForm() {
   document.getElementById("jitterMsValue").textContent = settings.jitterMs;
   document.getElementById("positionJitterPxSlider").value = Math.min(200, settings.positionJitterPx);
   document.getElementById("positionJitterPxValue").textContent = settings.positionJitterPx;
+
+  const tolerance = (settings.colorTrigger && settings.colorTrigger.tolerance) || 0;
+  document.getElementById("colorToleranceSlider").value = Math.min(150, tolerance);
+  document.getElementById("colorTolerance").value = tolerance;
+  renderColorTrigger();
 
   updateActionVisibility();
   updateModeVisibility();
@@ -338,6 +364,9 @@ function bindHandlers() {
   bindSlider("intervalMs", (v) => save({ intervalMs: Math.max(10, v || 100) }));
   bindSlider("jitterMs", (v) => save({ jitterMs: Math.max(0, v || 0) }));
   bindSlider("positionJitterPx", (v) => save({ positionJitterPx: Math.max(0, v || 0) }));
+  bindSlider("colorTolerance", (v) =>
+    save({ colorTrigger: { ...settings.colorTrigger, tolerance: Math.max(0, v || 0) } })
+  );
 
   document.querySelectorAll("#modeSegmented .seg-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -402,6 +431,32 @@ function bindHandlers() {
     if (point) {
       await save({ fixedPoint: point });
       updateModeVisibility();
+    }
+  });
+
+  document.getElementById("colorTriggerEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ colorTrigger: { ...settings.colorTrigger, enabled: e.target.checked } });
+  });
+  document.getElementById("colorPickPointBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const point = await window.api.pickPoint();
+    if (point) {
+      await save({ colorTrigger: { ...settings.colorTrigger, point } });
+      renderColorTrigger();
+    }
+  });
+  document.getElementById("colorSampleBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const point = settings.colorTrigger && settings.colorTrigger.point;
+    if (!point) {
+      document.getElementById("colorTriggerHint").textContent = "Сначала выбери точку проверки.";
+      return;
+    }
+    const color = await window.api.sampleColor(point);
+    if (color) {
+      await save({ colorTrigger: { ...settings.colorTrigger, color } });
+      renderColorTrigger();
     }
   });
 

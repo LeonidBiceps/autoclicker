@@ -10,7 +10,7 @@ const path = require("path");
 const fs = require("fs");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
-const { mouse, keyboard, Point, Button } = require("@nut-tree-fork/nut-js");
+const { mouse, keyboard, screen: nutScreen, Point, Button } = require("@nut-tree-fork/nut-js");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
 
@@ -107,6 +107,23 @@ async function performClick() {
   }
 }
 
+// --- Color trigger (click only when a watched pixel matches a target color, Pro) ---
+
+async function colorConditionMet(settings) {
+  const trigger = settings.colorTrigger;
+  if (!proUnlocked || !trigger || !trigger.enabled || !trigger.point || !trigger.color) return true;
+  try {
+    const sample = await nutScreen.colorAt(new Point(trigger.point.x, trigger.point.y));
+    const dr = sample.R - trigger.color.r;
+    const dg = sample.G - trigger.color.g;
+    const db = sample.B - trigger.color.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    return distance <= trigger.tolerance;
+  } catch (e) {
+    return true; // не блокируем клики, если чтение экрана не удалось
+  }
+}
+
 function checkAutoStop(settings) {
   if (!proUnlocked && sessionClicks >= FREE_SESSION_CLICK_CAP) {
     stopClicking(`Бесплатная версия: лимит ${FREE_SESSION_CLICK_CAP} кликов за запуск. Pro снимает ограничение.`);
@@ -131,14 +148,16 @@ function scheduleNext() {
 
   timerId = setTimeout(async () => {
     try {
-      await performClick();
+      if (await colorConditionMet(settings)) {
+        await performClick();
+        sessionClicks++;
+        updateHud(`● ${sessionClicks} кликов`);
+      }
     } catch (e) {
       stopClicking(`Ошибка: ${e.message}`);
       return;
     }
-    sessionClicks++;
     sendStatus();
-    updateHud(`● ${sessionClicks} кликов`);
     if (!checkAutoStop(settings)) scheduleNext();
   }, delay);
 }
@@ -504,6 +523,15 @@ ipcMain.handle("click:toggle", () => toggleClicking());
 ipcMain.handle("click:status", () => ({ running, clickCount: sessionClicks }));
 ipcMain.handle("point:pick", () => pickPoint());
 ipcMain.handle("key:capture", () => captureNextKey());
+
+ipcMain.handle("color:sample", async (event, point) => {
+  try {
+    const c = await nutScreen.colorAt(new Point(point.x, point.y));
+    return { r: c.R, g: c.G, b: c.B };
+  } catch (e) {
+    return null;
+  }
+});
 
 ipcMain.handle("donate:open", () => {
   if (!DONATE_URL) return { ok: false, error: "not-configured" };

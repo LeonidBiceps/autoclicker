@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   stopAfterClicks: 0,
   stopAfterMs: 0,
   positionJitterPx: 0,
+  colorTrigger: { enabled: false, point: null, color: null, tolerance: 30 }, // Pro: клик только при совпадении цвета
   fixedPoint: null, // { x, y }
   sequencePoints: [], // [{ x, y }, ...]
   mode: "cursor", // 'cursor' | 'point' | 'sequence'
@@ -32,6 +33,7 @@ const PROFILE_FIELDS = [
   "button",
   "keyToPress",
   "positionJitterPx",
+  "colorTrigger",
   "stopAfterClicks",
   "stopAfterMs",
   "mode",

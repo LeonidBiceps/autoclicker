@@ -84,6 +84,16 @@ h1 {
   flex-shrink: 0;
 }
 
+.color-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid #343946;
+  background: #22252d;
+  flex-shrink: 0;
+}
+
 .pro-badge {
   display: inline-block;
   margin-left: 6px;

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("api", {
   toggle: () => ipcRenderer.invoke("click:toggle"),
   getStatus: () => ipcRenderer.invoke("click:status"),
   pickPoint: () => ipcRenderer.invoke("point:pick"),
+  sampleColor: (point) => ipcRenderer.invoke("color:sample", point),
   captureKey: () => ipcRenderer.invoke("key:capture"),
   openDonate: () => ipcRenderer.invoke("donate:open"),
   checkForUpdate: () => ipcRenderer.invoke("update:check"),

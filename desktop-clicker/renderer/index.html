@@ -142,6 +142,33 @@
           </div>
         </div>
       </section>
+
+      <section id="colorTriggerSection">
+        <h2>🎨 Триггер по цвету <span class="pro-badge" id="colorTriggerBadge">Pro</span>
+          <span title="Кликает не по таймеру, а только когда цвет в выбранной точке экрана совпал с заданным — для фарма, рыбалки, ожидания события в игре">ⓘ</span></h2>
+        <label class="switch-row">
+          <span>Кликать только при совпадении цвета</span>
+          <span class="switch">
+            <input type="checkbox" id="colorTriggerEnabled" />
+            <span class="switch-slider"></span>
+          </span>
+        </label>
+        <div class="field">
+          <div class="row">
+            <button id="colorPickPointBtn" class="secondary-btn">Точка проверки</button>
+            <button id="colorSampleBtn" class="secondary-btn">Взять цвет с этой точки</button>
+            <span id="colorSwatch" class="color-swatch"></span>
+          </div>
+          <p class="hint" id="colorTriggerHint">Точка не выбрана.</p>
+        </div>
+        <div class="field">
+          <label for="colorTolerance" title="0 — только точное совпадение, больше — шире диапазон близких оттенков">Допуск</label>
+          <div class="slider-row">
+            <input type="range" id="colorToleranceSlider" min="0" max="150" step="1" />
+            <input type="number" id="colorTolerance" min="0" max="150" step="1" class="slider-number" />
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="tab-panel" data-panel="hotkeys" hidden>
