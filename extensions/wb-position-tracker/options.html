@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Настройки — WB Позиции в поиске</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="page">
+    <h1>WB — Позиции в поиске</h1>
+    <p class="lead">
+      Отслеживает позицию твоих товаров в органической выдаче поиска Wildberries по своим ключевым
+      словам. Работает, пока у тебя открыта вкладка с поиском по нужному запросу — зайди на
+      <code>wildberries.ru</code>, найди свой запрос, прокрути до нужной глубины (выдача подгружается
+      по мере скролла) — позиция появится прямо на странице и сохранится в историю ниже.
+    </p>
+
+    <section id="addSection">
+      <h2>Добавить товар для отслеживания</h2>
+      <div class="field">
+        <label for="nmId">Артикул (nmId)</label>
+        <input type="text" id="nmId" placeholder="например 1207541549 — цифры из ссылки на товар /catalog/1207541549/detail.aspx" />
+      </div>
+      <div class="field">
+        <label for="itemName">Название (для себя, чтобы не путать)</label>
+        <input type="text" id="itemName" placeholder="например: Кроссовки мужские, синие" />
+      </div>
+      <div class="field">
+        <label for="keywords">Ключевые слова (по одному на строку)</label>
+        <textarea id="keywords" rows="3" placeholder="кроссовки мужские&#10;кроссовки для бега"></textarea>
+      </div>
+      <button id="addBtn" class="secondary-btn">Добавить</button>
+      <p class="hint" id="addMessage"></p>
+    </section>
+
+    <section id="itemsSection">
+      <h2>Отслеживаемые товары</h2>
+      <div id="itemsList"></div>
+    </section>
+
+    <section id="historySection">
+      <h2>История позиций</h2>
+      <div class="field">
+        <label for="historyFilter">Товар</label>
+        <select id="historyFilter"></select>
+      </div>
+      <div id="historyTable"></div>
+    </section>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>
