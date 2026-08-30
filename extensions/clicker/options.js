@@ -1,5 +1,6 @@
-const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.1.0/Autoclicker-1.1.0.exe";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.2.0/Autoclicker-1.2.0.exe";
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
+const REPO = "LeonidBiceps/autoclicker";
 
 const DEFAULT_SETTINGS = {
   intervalMs: 100,
@@ -302,10 +303,46 @@ function bindHandlers() {
   });
 }
 
+function isNewerVersion(latest, current) {
+  const a = latest.split(".").map((n) => parseInt(n, 10));
+  const b = current.split(".").map((n) => parseInt(n, 10));
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
+
+async function checkForExtensionUpdate() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const asset = (data.assets || []).find((a) => /^Autoclicker-Extension-\d+\.\d+\.\d+\.zip$/.test(a.name));
+    if (!asset) return;
+    const latestVersion = asset.name.match(/^Autoclicker-Extension-(\d+\.\d+\.\d+)\.zip$/)[1];
+    const currentVersion = chrome.runtime.getManifest().version;
+    if (!isNewerVersion(latestVersion, currentVersion)) return;
+
+    document.getElementById("updateBannerText").textContent =
+      `Доступна новая версия расширения ${latestVersion} (у тебя ${currentVersion}). Скачай .zip, ` +
+      `распакуй поверх старой папки и нажми «Обновить» на карточке расширения в chrome://extensions.`;
+    document.getElementById("updateBanner").hidden = false;
+    document.getElementById("updateDownloadBtn").addEventListener("click", () => {
+      chrome.tabs.create({ url: asset.browser_download_url });
+    });
+  } catch (e) {
+    // нет сети или GitHub недоступен — молча пропускаем, это не блокирует работу расширения
+  }
+}
+
 chrome.storage.sync.get(DEFAULT_SETTINGS, (stored) => {
   settings = { ...DEFAULT_SETTINGS, ...stored };
   loadIntoForm();
   renderProfileSelect();
   bindHandlers();
   refreshLicenseStatus(false);
+  checkForExtensionUpdate();
 });

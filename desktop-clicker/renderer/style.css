@@ -66,6 +66,24 @@ h1 {
   color: #2a1a00;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #1c3350;
+  border: 1px solid #2c4d78;
+  font-size: 12px;
+  color: #cfe3ff;
+}
+
+.update-banner .secondary-btn {
+  flex-shrink: 0;
+}
+
 .pro-badge {
   display: inline-block;
   margin-left: 6px;
