@@ -5,6 +5,12 @@
 для управления мышью/клавиатурой и [uiohook-napi](https://www.npmjs.com/package/uiohook-napi) для
 записи реальных кликов (макросы).
 
+**Готовый `.exe` для раздачи пользователям (без сборки):**
+[Autoclicker-1.0.0.exe](https://github.com/LeonidBiceps/autoclicker/releases/download/v1.0.0/Autoclicker-1.0.0.exe)
+— именно на эту ссылку указывает кнопка «Скачать desktop-версию» в браузерном расширении
+(`DESKTOP_APP_URL` в `extensions/clicker/options.js`). При новом релизе — залить новый `.exe` через
+`gh release create vX.Y.Z ...` и обновить эту ссылку в двух местах: тут и в `options.js`.
+
 ## Запуск
 
 ```bash

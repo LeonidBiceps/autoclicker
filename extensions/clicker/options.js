@@ -1,7 +1,4 @@
-// Заполни ссылкой на страницу загрузки desktop-версии, когда она где-то захостится
-// (GitHub Releases, свой сайт, Яндекс.Диск и т.п.). Пусто = кнопка честно скажет,
-// что ссылка ещё не готова, вместо того чтобы открыть пустоту.
-const DESKTOP_APP_URL = "";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.0.0/Autoclicker-1.0.0.exe";
 
 const DEFAULT_SETTINGS = {
   intervalMs: 100,
