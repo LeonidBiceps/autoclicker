@@ -244,6 +244,26 @@ function loadAndUpdate() {
   });
 }
 
-for (const delay of RETRY_DELAYS_MS) {
-  setTimeout(loadAndUpdate, delay);
+function runRetryCascade() {
+  loadAndUpdate();
+  for (const delay of RETRY_DELAYS_MS) {
+    setTimeout(loadAndUpdate, delay);
+  }
 }
+
+runRetryCascade();
+
+// Wildberries (и многие другие магазины) — SPA: переход на другой товар со страницы поиска или
+// с карточки на карточку меняет location.href через history.pushState, БЕЗ настоящей перезагрузки
+// страницы. Content-script запускается один раз при первой загрузке и такие переходы не видит —
+// поэтому без этого опроса цена обновлялась только по F5. Проверено вживую: обычный `popstate`
+// тут не помогает (SPA не всегда его шлёт при переходах вперёд), поэтому просто следим за
+// изменением URL по таймеру — надёжнее, чем перехватывать pushState/replaceState.
+let lastUrl = location.href;
+setInterval(() => {
+  if (location.href === lastUrl) return;
+  lastUrl = location.href;
+  dismissedThisPageLoad = false;
+  if (widgetEl) widgetEl.style.display = "none";
+  runRetryCascade();
+}, 800);
