@@ -34,6 +34,115 @@ function extractFromWildberries() {
   };
 }
 
+// --- Цена за единицу в выдаче поиска WB (сравнение реальной выгоды между упаковками) ---
+//
+// Wildberries не показывает цену за 100г/100мл/шт — один и тот же товар продаётся у разных
+// продавцов в разной фасовке (500г, 1кг, россыпью), и на глаз сравнить, что реально дешевле,
+// почти невозможно. Достаём вес/объём/количество из названия товара (в aria-label карточки —
+// проверено вживую, там обычно есть "1 кг", "500 г", "3 шт" и т.п.) и считаем цену за единицу.
+// Это эвристика по тексту названия, не структурированные данные — если продавец не написал вес
+// в названии или написал нестандартно, бейджа просто не будет (лучше промолчать, чем соврать).
+
+function isWbSearchPage() {
+  return /(^|\.)wildberries\.ru$/.test(location.hostname) && /\/catalog\/0\/search\.aspx/.test(location.pathname);
+}
+
+const QUANTITY_PATTERNS = [
+  { re: /(\d+(?:[.,]\d+)?)\s*(?:грамм|гр\.?|г)(?![а-яё])/iu, unit: "g", mul: 1 },
+  { re: /(\d+(?:[.,]\d+)?)\s*кг(?![а-яё])/iu, unit: "g", mul: 1000 },
+  { re: /(\d+(?:[.,]\d+)?)\s*мл(?![а-яё])/iu, unit: "ml", mul: 1 },
+  { re: /(\d+(?:[.,]\d+)?)\s*л(?![а-яё])/iu, unit: "ml", mul: 1000 },
+  { re: /(\d+(?:[.,]\d+)?)\s*(?:штук|шт\.?)(?![а-яё])/iu, unit: "pcs", mul: 1 },
+  { re: /(\d+(?:[.,]\d+)?)\s*(?:пары|пар)(?![а-яё])/iu, unit: "pcs", mul: 1 },
+];
+
+function parseQuantityFromTitle(title) {
+  for (const p of QUANTITY_PATTERNS) {
+    const m = title.match(p.re);
+    if (!m) continue;
+    const num = parseFloat(m[1].replace(",", "."));
+    if (num > 0) return { amount: num * p.mul, unit: p.unit };
+  }
+  return null;
+}
+
+function formatUnitPrice(price, qty) {
+  if (qty.unit === "g" || qty.unit === "ml") {
+    const per100 = (price / qty.amount) * 100;
+    const suffix = qty.unit === "g" ? "100 г" : "100 мл";
+    return `${per100 < 10 ? per100.toFixed(2) : per100.toFixed(1)} ₽ / ${suffix}`;
+  }
+  if (qty.unit === "pcs") {
+    const perPcs = price / qty.amount;
+    return `${perPcs < 10 ? perPcs.toFixed(2) : perPcs.toFixed(1)} ₽ / шт`;
+  }
+  return null;
+}
+
+function parsePriceFromIns(insEl) {
+  const digits = insEl.textContent.replace(/[^\d]/g, "");
+  return digits ? parseInt(digits, 10) : null;
+}
+
+function scanSearchCardsForValue() {
+  const list = document.querySelector(".product-card-list");
+  if (!list) return;
+  const cards = list.querySelectorAll(".product-card");
+  cards.forEach((card) => {
+    if (card.dataset.ptValueDone === "1") return;
+    card.dataset.ptValueDone = "1";
+
+    const link = card.querySelector("a.product-card__link");
+    const insEl = card.querySelector("ins");
+    // Вставляем бейдж в .product-card__wrapper (overflow: visible, flex-column), а НЕ в сам блок
+    // цены — тот у WB display:flex + overflow:hidden и схлопывает добавленный элемент до
+    // нулевого размера (проверено вживую: без явного inline-стиля новый child внутри него получал
+    // rect 0x0). .product-card__wrapper — следующий блочный уровень выше, там элемент рендерится
+    // нормально, просто новой строкой внизу карточки.
+    const wrapper = card.querySelector(".product-card__wrapper");
+    if (!link || !insEl || !wrapper) return;
+
+    const name = link.getAttribute("aria-label") || "";
+    const price = parsePriceFromIns(insEl);
+    if (!price) return;
+
+    const qty = parseQuantityFromTitle(name);
+    if (!qty) return;
+
+    const label = formatUnitPrice(price, qty);
+    if (!label) return;
+
+    const badge = document.createElement("div");
+    badge.className = "pt-unit-badge";
+    badge.textContent = label;
+    wrapper.appendChild(badge);
+  });
+}
+
+let searchListObserver = null;
+
+function observeSearchList(list) {
+  if (searchListObserver) searchListObserver.disconnect();
+  searchListObserver = new MutationObserver(() => scanSearchCardsForValue());
+  searchListObserver.observe(list, { childList: true, subtree: true });
+}
+
+function initSearchValueBadges() {
+  let attempts = 0;
+  const tryInit = () => {
+    const list = document.querySelector(".product-card-list");
+    if (!list) return false;
+    scanSearchCardsForValue();
+    observeSearchList(list);
+    return true;
+  };
+  if (tryInit()) return;
+  const interval = setInterval(() => {
+    attempts++;
+    if (tryInit() || attempts > 10) clearInterval(interval);
+  }, 500);
+}
+
 // Ozon: пока не реализовано — не смог вживую проверить вёрстку карточки товара (эта песочница
 // заблокирована на уровне IP на ozon.ru), а гадать по памяти рискованно, могло устареть. На Ozon
 // пока сработают только общие способы ниже (JSON-LD/meta/itemprop), если сайт их отдаёт.
@@ -251,7 +360,15 @@ function runRetryCascade() {
   }
 }
 
-runRetryCascade();
+function initForCurrentPage() {
+  if (isWbSearchPage()) {
+    initSearchValueBadges();
+  } else {
+    runRetryCascade();
+  }
+}
+
+initForCurrentPage();
 
 // Wildberries (и многие другие магазины) — SPA: переход на другой товар со страницы поиска или
 // с карточки на карточку меняет location.href через history.pushState, БЕЗ настоящей перезагрузки
@@ -265,5 +382,5 @@ setInterval(() => {
   lastUrl = location.href;
   dismissedThisPageLoad = false;
   if (widgetEl) widgetEl.style.display = "none";
-  runRetryCascade();
+  initForCurrentPage();
 }, 800);

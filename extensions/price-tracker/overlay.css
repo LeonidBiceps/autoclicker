@@ -43,6 +43,18 @@
   line-height: 0;
 }
 
+.pt-unit-badge {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #22303f;
+  color: #7fc4ff;
+  font: 600 11px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+  white-space: nowrap;
+}
+
 .pt-original {
   margin-top: 6px;
   padding-top: 6px;
