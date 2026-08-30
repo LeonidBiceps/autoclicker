@@ -128,6 +128,8 @@ function updateProUI() {
   document.getElementById("exportBadge").hidden = proUnlocked;
   document.getElementById("macroTabBadge").hidden = proUnlocked;
   document.getElementById("profilesTabBadge").hidden = proUnlocked;
+  document.getElementById("bindsBadge").hidden = proUnlocked;
+  document.getElementById("bindsTabBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -141,12 +143,15 @@ function updateProUI() {
     "saveProfileBtn",
     "exportBtn",
     "importBtn",
+    "bindHotkey",
+    "bindText",
+    "bindAddBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
   const proStatus = document.getElementById("proStatus");
   proStatus.textContent = proUnlocked
-    ? "Pro активирован — без лимита кликов, разброс позиции, последовательность точек, макросы, профили, расписание."
+    ? "Pro активирован — без лимита кликов, разброс позиции, последовательность точек, макросы, бинды, профили, расписание."
     : "Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.";
 }
 
@@ -258,6 +263,34 @@ function renderMacroList() {
   });
 }
 
+// --- Binds (hotkey -> type text) ---
+
+function renderBindList() {
+  const list = document.getElementById("bindList");
+  const binds = settings.binds || [];
+  if (binds.length === 0) {
+    list.innerHTML = `<div class="empty-hint">⌨️ Пока нет биндов</div>`;
+    return;
+  }
+  list.innerHTML = binds
+    .map(
+      (b) => `<div class="macro-item">
+        <span><code>${escapeHtml(b.hotkey)}</code> → ${escapeHtml(b.text)}</span>
+        <div class="item-actions">
+          <button class="delete-btn" data-id="${escapeHtml(b.id)}">×</button>
+        </div>
+      </div>`
+    )
+    .join("");
+  list.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const binds2 = (settings.binds || []).filter((b) => b.id !== btn.dataset.id);
+      await save({ binds: binds2 });
+      renderBindList();
+    });
+  });
+}
+
 async function promptAndSaveMacro(events) {
   setRecordingUI(false);
   if (!events || events.length === 0) {
@@ -337,6 +370,12 @@ function bindHandlers() {
   document.getElementById("donateBtn").addEventListener("click", async () => {
     const result = await window.api.openDonate();
     const message = document.getElementById("donateMessage");
+    message.textContent = result.ok ? "" : "Ссылка ещё не настроена (DONATE_URL в main.js).";
+  });
+
+  document.getElementById("donateForProBtn").addEventListener("click", async () => {
+    const result = await window.api.openDonate();
+    const message = document.getElementById("donateForProMessage");
     message.textContent = result.ok ? "" : "Ссылка ещё не настроена (DONATE_URL в main.js).";
   });
 
@@ -452,6 +491,7 @@ function bindHandlers() {
       loadIntoForm();
       renderProfileSelect();
       renderMacroList();
+      renderBindList();
       message.textContent = "Импортировано.";
     } else if (result.error) {
       message.textContent = `Ошибка: ${result.error}`;
@@ -485,6 +525,30 @@ function bindHandlers() {
     await promptAndSaveMacro(result.events);
   });
 
+  // Бинды
+  document.getElementById("bindAddBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const message = document.getElementById("bindMessage");
+    const hotkeyInput = document.getElementById("bindHotkey");
+    const textInput = document.getElementById("bindText");
+    const hotkey = hotkeyInput.value.trim();
+    const text = textInput.value;
+    if (!hotkey || !text) {
+      message.textContent = "Заполни хоткей и текст.";
+      return;
+    }
+    if ((settings.binds || []).some((b) => b.hotkey.toLowerCase() === hotkey.toLowerCase())) {
+      message.textContent = "Такой хоткей уже занят другим биндом.";
+      return;
+    }
+    const bind = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, hotkey, text };
+    await save({ binds: [...(settings.binds || []), bind] });
+    renderBindList();
+    hotkeyInput.value = "";
+    textInput.value = "";
+    message.textContent = "Бинд добавлен.";
+  });
+
   window.api.onStatus((status) => renderStatus(status));
   window.api.onNote((text) => {
     const note = document.getElementById("note");
@@ -503,6 +567,7 @@ async function init() {
   updateProUI();
   renderProfileSelect();
   renderMacroList();
+  renderBindList();
   bindHandlers();
   const status = await window.api.getStatus();
   renderStatus(status);

@@ -23,6 +23,14 @@
       <h2>👑 Pro <span title="Единый ключ работает и в этом приложении, и в браузерном расширении">ⓘ</span></h2>
       <p class="hint" id="proStatus">Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.</p>
       <div class="field">
+        <p class="hint">
+          Как получить ключ: задонать от 200 ₽ и <strong>укажи свою почту в комментарии к донату</strong> —
+          вышлем ключ на неё вручную, обычно в течение суток.
+        </p>
+        <button id="donateForProBtn" class="secondary-btn">💛 Задонатить и получить Pro</button>
+        <p class="hint" id="donateForProMessage"></p>
+      </div>
+      <div class="field">
         <label for="licenseKey">Лицензионный ключ</label>
         <div class="row">
           <input type="text" id="licenseKey" placeholder="вставь ключ, который получил от продавца" />
@@ -47,6 +55,7 @@
       <button class="tab-btn active" data-tab="click"><span class="tab-icon">🖱</span> Клик</button>
       <button class="tab-btn" data-tab="hotkeys"><span class="tab-icon">⌨</span> Хоткеи</button>
       <button class="tab-btn" data-tab="macros"><span class="tab-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
+      <button class="tab-btn" data-tab="binds"><span class="tab-icon">⌨️</span> Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></button>
       <button class="tab-btn" data-tab="profiles"><span class="tab-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
       <button class="tab-btn" data-tab="system"><span class="tab-icon">⚙</span> Система</button>
     </div>
@@ -190,6 +199,31 @@
         </div>
         <div class="field">
           <div class="macro-list" id="macroList"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" data-panel="binds" hidden>
+      <section id="bindsSection">
+        <h2>⌨️ Бинды <span class="pro-badge" id="bindsBadge">Pro</span>
+          <span title="Нажимаешь глобальный хоткей в любом окне — программа сама печатает заданный текст, как будто ты его набрал">ⓘ</span></h2>
+        <p class="hint">Глобальный хоткей → в поле, где сейчас курсор, печатается заданный текст.
+          Работает в любом окне Windows (чат, игра, браузер), не только в этом приложении.</p>
+        <div class="field">
+          <label for="bindHotkey">Хоткей</label>
+          <input type="text" id="bindHotkey" maxlength="20" placeholder="например F6 или Control+Alt+T" />
+          <p class="hint">Формат: <code>F6</code>, <code>Control+Alt+T</code> и т.п. — как в разделе «Хоткеи».</p>
+        </div>
+        <div class="field">
+          <label for="bindText">Что печатать</label>
+          <input type="text" id="bindText" placeholder="текст, который будет напечатан" />
+        </div>
+        <div class="field">
+          <button id="bindAddBtn" class="secondary-btn">Добавить бинд</button>
+          <p class="hint" id="bindMessage"></p>
+        </div>
+        <div class="field">
+          <div class="macro-list" id="bindList"></div>
         </div>
       </section>
     </div>

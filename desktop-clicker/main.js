@@ -3,7 +3,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeI
 // Заполни своей страницей (Boosty, DonationAlerts и т.п. — то, что реально работает из России).
 // Пустая строка = кнопка доната покажет честное сообщение «ссылка ещё не настроена», а не тихо
 // откроет пустоту или чужую страницу.
-const DONATE_URL = "";
+const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const path = require("path");
 const fs = require("fs");
 const { Store, PROFILE_FIELDS } = require("./store");
@@ -364,6 +364,16 @@ async function playMacro(events) {
   }
 }
 
+// --- Binds (global hotkey -> types fixed text, Pro) ---
+
+async function typeBindText(text) {
+  try {
+    await keyboard.type(text);
+  } catch (e) {
+    console.error("Не удалось напечатать текст бинда:", e.message);
+  }
+}
+
 // --- Window / tray ---
 
 function createWindow(startHidden) {
@@ -446,6 +456,17 @@ function registerShortcuts() {
       });
     } catch (e) {
       console.error("Не удалось зарегистрировать хоткей остановки записи:", e.message);
+    }
+  }
+
+  if (proUnlocked) {
+    for (const bind of settings.binds || []) {
+      if (!bind.hotkey || !bind.text) continue;
+      try {
+        globalShortcut.register(bind.hotkey, () => typeBindText(bind.text));
+      } catch (e) {
+        console.error(`Не удалось зарегистрировать бинд "${bind.hotkey}":`, e.message);
+      }
     }
   }
 }
@@ -563,7 +584,7 @@ ipcMain.handle("settings:export", async () => {
   if (result.canceled || !result.filePath) return { ok: false };
 
   const settings = store.getAll();
-  const exportData = { profiles: settings.profiles, macros: settings.macros };
+  const exportData = { profiles: settings.profiles, macros: settings.macros, binds: settings.binds };
   for (const field of PROFILE_FIELDS) exportData[field] = settings[field];
 
   fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2));
@@ -589,6 +610,9 @@ ipcMain.handle("settings:import", async () => {
     }
     if (data.macros && typeof data.macros === "object") {
       partial.macros = { ...store.get("macros"), ...data.macros };
+    }
+    if (Array.isArray(data.binds)) {
+      partial.binds = data.binds;
     }
     store.set(partial);
     registerShortcuts();

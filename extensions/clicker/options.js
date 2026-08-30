@@ -1,4 +1,5 @@
 const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.0.0/Autoclicker-1.0.0.exe";
+const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 
 const DEFAULT_SETTINGS = {
   intervalMs: 100,
@@ -207,6 +208,15 @@ function bindHandlers() {
       return;
     }
     chrome.tabs.create({ url: DESKTOP_APP_URL });
+  });
+
+  document.getElementById("donateForProBtn").addEventListener("click", () => {
+    const message = document.getElementById("donateForProMessage");
+    if (!DONATE_URL) {
+      message.textContent = "Ссылка ещё не настроена (DONATE_URL в options.js).";
+      return;
+    }
+    chrome.tabs.create({ url: DONATE_URL });
   });
 
   document.getElementById("activateBtn").addEventListener("click", () => {

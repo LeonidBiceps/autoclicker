@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   licenseKey: "",
   profiles: {}, // name -> settings subset
   macros: {}, // name -> [{ x, y, t }, ...]
+  binds: [], // [{ id, hotkey, text }, ...] — глобальный хоткей печатает заданный текст (Pro)
   launchOnStartup: false,
   launchMinimized: false,
 };
