@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ИИ-переписчик тона",
+  "version": "1.1.0",
+  "description": "Выдели текст в любом поле ввода — переписывает под нужный тон через Claude API. Нужен собственный API-ключ Anthropic.",
+  "action": {},
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.anthropic.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "merge2048",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "merge2048", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "starfarm",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "starfarm", "5174"],
+      "port": 5174
+    },
+    {
+      "name": "gems",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "gems", "5175"],
+      "port": 5175
+    },
+    {
+      "name": "astroassault",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "astroassault", "5176"],
+      "port": 5176
+    },
+    {
+      "name": "lovestory",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "lovestory", "5177"],
+      "port": 5177
+    },
+    {
+      "name": "towerstack",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/cli.mjs", "dev", "towerstack", "5178"],
+      "port": 5178
+    }
+  ]
+}

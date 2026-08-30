@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Трекер цен</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <h1>Трекер цен</h1>
+    <div id="list" class="list"></div>
+    <p id="empty" class="empty" hidden>Пока ничего не отслеживается. Открой страницу товара — если на ней есть цена, она появится здесь.</p>
+    <button id="clearAll" class="clear-btn">Очистить всё</button>
+
+    <details class="affiliate-settings">
+      <summary>Партнёрская ссылка</summary>
+      <label for="affiliateTemplate">Шаблон ссылки (подставится в каждый переход на товар)</label>
+      <input type="text" id="affiliateTemplate" placeholder="https://ad.admitad.com/g/xxxxx/?ulp={url}" />
+      <p class="affiliate-hint">
+        <code>{url}</code> — обязательная часть, туда подставится адрес страницы товара. Шаблон
+        берётся из твоей партнёрской программы (Admitad, ePN, Amazon Associates и т.д.) — сначала
+        нужно зарегистрироваться в ней самому, я это сделать не могу. Пусто — ссылки открываются
+        как обычно, без партнёрской подстановки.
+      </p>
+    </details>
+  </div>
+  <script src="sparkline.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

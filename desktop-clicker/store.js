@@ -1,0 +1,75 @@
+const fs = require("fs");
+const path = require("path");
+
+const DEFAULT_SETTINGS = {
+  intervalMs: 100,
+  jitterMs: 20,
+  actionType: "mouse", // 'mouse' | 'keyboard'
+  button: "left", // 'left' | 'right' | 'double'
+  keyToPress: { name: "Space", code: 57 }, // захвачено через uiohook-napi (см. main.js)
+  hotkey: "F8",
+  panicHotkey: "F9",
+  recordHotkey: "F10",
+  stopAfterClicks: 0,
+  stopAfterMs: 0,
+  positionJitterPx: 0,
+  fixedPoint: null, // { x, y }
+  sequencePoints: [], // [{ x, y }, ...]
+  mode: "cursor", // 'cursor' | 'point' | 'sequence'
+  licenseKey: "",
+  profiles: {}, // name -> settings subset
+  macros: {}, // name -> [{ x, y, t }, ...]
+  launchOnStartup: false,
+  launchMinimized: false,
+};
+
+// Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).
+const PROFILE_FIELDS = [
+  "intervalMs",
+  "jitterMs",
+  "actionType",
+  "button",
+  "keyToPress",
+  "positionJitterPx",
+  "stopAfterClicks",
+  "stopAfterMs",
+  "mode",
+  "fixedPoint",
+  "sequencePoints",
+];
+
+class Store {
+  constructor(filePath) {
+    this.filePath = filePath;
+    this.data = this.load();
+  }
+
+  load() {
+    try {
+      const raw = fs.readFileSync(this.filePath, "utf8");
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    } catch (e) {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  save() {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
+  }
+
+  get(key) {
+    return this.data[key];
+  }
+
+  getAll() {
+    return { ...this.data };
+  }
+
+  set(partial) {
+    this.data = { ...this.data, ...partial };
+    this.save();
+  }
+}
+
+module.exports = { Store, DEFAULT_SETTINGS, PROFILE_FIELDS };

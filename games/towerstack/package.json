@@ -1,0 +1,7 @@
+{
+  "name": "@yg/towerstack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Башня — блочный стекер: ловите момент и роняйте блоки максимально ровно"
+}

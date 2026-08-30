@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Автокликер</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <h1>Автокликер <span class="tier-badge" id="tierBadge">Free</span></h1>
+
+    <div class="status">
+      <span id="statusDot" class="dot"></span>
+      <span id="statusText">Проверяем вкладку…</span>
+    </div>
+    <div class="count" id="count"></div>
+
+    <button id="toggleBtn" class="toggle-btn">…</button>
+    <button id="panelBtn" class="panel-btn">Показать/скрыть панель</button>
+    <button id="optionsBtn" class="options-btn">Все настройки →</button>
+
+    <p class="hint">
+      Глобальные хоткеи (работают независимо от фокуса) — в настройках Chrome
+      <code>chrome://extensions/shortcuts</code>. <strong>Esc на странице всегда останавливает.</strong>
+    </p>
+  </div>
+  <script src="license.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+.tc-badge {
+  position: absolute;
+  z-index: 2147483647;
+  display: none;
+  padding: 3px 8px;
+  font: 11px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #1f2430;
+  color: #d7dbe6;
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tc-badge.tc-long {
+  background: #4a2e1f;
+  color: #ffcf9e;
+}
+
+.tc-badge.tc-warn {
+  background: #4a3d1f;
+  color: #ffd479;
+}
+
+.tc-badge.tc-over {
+  background: #4a1f1f;
+  color: #ff9e9e;
+}

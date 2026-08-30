@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0b0f1a" />
+    <meta
+      name="description"
+      content="Астроштурм: отбивайтесь от волн врагов, прокачивайтесь между боями и копите медали на постоянные перки."
+    />
+    <title>Астроштурм</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b0f1a'/%3E%3Ccircle cx='32' cy='24' r='9' fill='%23ffe0b2'/%3E%3Crect x='20' y='32' width='24' height='20' rx='5' fill='%237aa2f7'/%3E%3Crect x='40' y='36' width='16' height='4' rx='2' fill='%23e8ecf4'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="hud">
+        <div class="level-badge" id="level-badge">1</div>
+        <div class="hp-wrap">
+          <div class="hp-label" id="label-hp">ХП</div>
+          <div class="hp-bar"><i id="hp-fill"></i></div>
+          <div class="xp-bar"><i id="xp-fill"></i></div>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span id="label-score">Счёт</span>
+            <b id="score">0</b>
+          </div>
+          <div class="stat coins">
+            <span id="label-coins">Монеты</span>
+            <b id="coins">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div id="wave-banner" class="wave-banner" hidden></div>
+
+      <div id="board" class="board">
+        <div id="joystick-base" class="joystick-base">
+          <div id="joystick-knob" class="joystick-knob"></div>
+        </div>
+        <button id="jump-btn" class="jump-btn" type="button" aria-label="Прыжок">⤒</button>
+      </div>
+
+      <footer class="controls">
+        <button id="restart" class="btn" type="button">Заново</button>
+        <button id="leaders" class="btn btn-icon" type="button" aria-label="Таблица лидеров">🏆</button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Правила и помощь">❓</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">Астроштурм</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "yg-studio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Портфельная студия HTML5-игр для Яндекс Игр",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "games/*"
+  ],
+  "scripts": {
+    "new": "node tools/cli.mjs new",
+    "dev": "node tools/cli.mjs dev",
+    "assets": "node tools/cli.mjs assets",
+    "build": "node tools/cli.mjs build",
+    "preview": "node tools/cli.mjs preview",
+    "package": "node tools/cli.mjs package",
+    "list": "node tools/cli.mjs list",
+    "check": "tsc --noEmit -p tsconfig.json --pretty",
+    "build:all": "node tools/cli.mjs build --all",
+    "package:all": "node tools/cli.mjs package --all"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "terser": "^5.37.0",
+    "archiver": "^7.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

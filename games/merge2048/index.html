@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#faf8ef" />
+    <meta
+      name="description"
+      content="Классическая головоломка 2048: сдвигайте плитки, складывайте одинаковые и доберитесь до 2048."
+    />
+    <title>2048</title>
+    <!-- Иконка встроена как data-URI: на первом экране не нужен лишний запрос. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23bbada0'/%3E%3Crect x='6' y='6' width='24' height='24' rx='5' fill='%23eee4da'/%3E%3Crect x='34' y='6' width='24' height='24' rx='5' fill='%23f2b179'/%3E%3Crect x='6' y='34' width='24' height='24' rx='5' fill='%23f59563'/%3E%3Crect x='34' y='34' width='24' height='24' rx='5' fill='%23edc22e'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="hud">
+        <div class="brand">2048</div>
+        <div class="scores">
+          <div class="score">
+            <span id="label-score">Счёт</span>
+            <b id="score">0</b>
+          </div>
+          <div class="score">
+            <span id="label-best">Рекорд</span>
+            <b id="best">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div id="board" class="board"></div>
+
+      <footer class="controls">
+        <button id="undo" class="btn" type="button">
+          <span class="glyph">↶</span>
+          <span class="label">Отменить</span>
+          <span id="undo-count" class="badge">3</span>
+        </button>
+        <button id="restart" class="btn" type="button">
+          <span class="glyph">↻</span>
+          <span class="label">Заново</span>
+        </button>
+        <button id="leaders" class="btn btn-icon" type="button" aria-label="Таблица лидеров">
+          <span class="glyph">🏆</span>
+        </button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">
+          <span class="glyph">🔊</span>
+        </button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Правила и помощь">
+          <span class="glyph">❓</span>
+        </button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">2048</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

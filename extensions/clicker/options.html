@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Настройки — Автокликер</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="page">
+    <h1>Автокликер — настройки</h1>
+    <p class="lead">
+      Это настройки по умолчанию для новых вкладок. Точку клика, последовательность точек и
+      видимость панели каждый сайт запоминает отдельно — их можно менять прямо в плавающей панели
+      на странице.
+    </p>
+
+    <section id="desktopSection">
+      <h2>Desktop-версия</h2>
+      <p class="hint">
+        Этот же автокликер есть и вне браузера — работает в любой программе и игре Windows, не
+        только на вкладке Chrome: последовательность точек, запись макросов, глобальные хоткеи вне
+        браузера, автозапуск с Windows. Один лицензионный ключ открывает Pro в обеих версиях.
+      </p>
+      <button id="downloadDesktopBtn" class="secondary-btn">Скачать desktop-версию</button>
+      <p class="hint" id="downloadDesktopMessage"></p>
+    </section>
+
+    <section id="proSection">
+      <h2>Pro</h2>
+      <p class="hint" id="proStatus">Бесплатная версия. Pro открывает последовательность точек и разброс позиции клика.</p>
+      <div class="field">
+        <label for="licenseKey">Лицензионный ключ</label>
+        <div class="key-row">
+          <input type="text" id="licenseKey" placeholder="вставь ключ, который получил от продавца" style="max-width:none; flex:1;" />
+          <button id="activateBtn" class="secondary-btn">Активировать</button>
+        </div>
+        <p class="hint" id="licenseMessage"></p>
+        <p class="hint">Проверяется офлайн, без сети — ключ либо подписан правильно, либо нет.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Скорость</h2>
+      <div class="field">
+        <label for="intervalMs">Интервал между кликами, мс</label>
+        <input type="number" id="intervalMs" min="10" step="10" />
+      </div>
+      <div class="field">
+        <label for="jitterMs">Разброс интервала, ± мс</label>
+        <input type="number" id="jitterMs" min="0" step="5" />
+        <p class="hint">Чтобы клики не шли идеально равномерно — небольшая случайность в тайминге.</p>
+      </div>
+      <div class="field">
+        <label for="positionJitterPx">Разброс позиции клика, px <span class="pro-badge" id="posJitterBadge">Pro</span></label>
+        <input type="number" id="positionJitterPx" min="0" step="1" />
+        <p class="hint">Случайное смещение точки клика в этом радиусе. 0 — кликать точно в заданное место.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Действие</h2>
+      <div class="field">
+        <label for="actionType">Что автоматизируем</label>
+        <select id="actionType">
+          <option value="mouse">Мышь</option>
+          <option value="keyboard">Клавиатура</option>
+        </select>
+      </div>
+      <div class="field" id="buttonField">
+        <label for="button">Кнопка мыши</label>
+        <select id="button">
+          <option value="left">Левая</option>
+          <option value="right">Правая</option>
+          <option value="double">Двойной клик</option>
+        </select>
+      </div>
+      <div class="field" id="keyField" hidden>
+        <label>Клавиша</label>
+        <div class="key-row">
+          <span class="key-name" id="keyName">Space</span>
+          <button id="setKeyBtn" class="secondary-btn">Установить клавишу</button>
+        </div>
+        <p class="hint">
+          Не печатает текст в поля ввода — только события нажатия клавиши, для игр и скриптов,
+          которые слушают их напрямую.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Хоткеи</h2>
+      <div class="field">
+        <label for="hotkey">Хоткей старт/стоп на странице</label>
+        <input type="text" id="hotkey" maxlength="2" />
+        <p class="hint">Работает, пока фокус на странице (не в текстовом поле). <strong>Esc всегда останавливает</strong>, независимо от этой настройки.</p>
+      </div>
+      <div class="field">
+        <label>Глобальные хоткеи</label>
+        <button id="openShortcuts" class="secondary-btn">Открыть настройки хоткеев Chrome</button>
+        <p class="hint">
+          Работают даже если фокус не на странице (например, в адресной строке). Назначены по
+          умолчанию: <code>Ctrl+Shift+K</code> — старт/стоп, <code>Ctrl+Shift+L</code> — аварийный
+          стоп. Поменять сочетания можно в открывшейся странице.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Автостоп</h2>
+      <div class="field">
+        <label for="stopAfterClicks">Остановить после кликов</label>
+        <input type="number" id="stopAfterClicks" min="0" step="1" />
+        <p class="hint">0 — без ограничения. В бесплатной версии есть свой потолок: 5000 кликов за один непрерывный запуск, даже если тут стоит 0 — нужно будет нажать «Старт» ещё раз. Pro снимает этот потолок.</p>
+      </div>
+      <div class="field">
+        <label for="stopAfterSeconds">Остановить через, сек</label>
+        <input type="number" id="stopAfterSeconds" min="0" step="1" />
+        <p class="hint">0 — без ограничения.</p>
+      </div>
+    </section>
+
+    <section id="profilesSection">
+      <h2>Профили <span class="pro-badge" id="profilesBadge">Pro</span></h2>
+      <p class="hint">Сохрани текущие настройки скорости/действия/автостопа под именем — быстро
+        переключаться между разными сайтами/играми, не перенастраивая всё заново.</p>
+      <div class="field">
+        <label for="profileSelect">Сохранённые профили</label>
+        <select id="profileSelect" style="max-width:none; width:100%;"></select>
+      </div>
+      <div class="field">
+        <div class="key-row">
+          <button id="applyProfileBtn" class="secondary-btn">Применить</button>
+          <button id="deleteProfileBtn" class="secondary-btn">Удалить</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="newProfileName">Сохранить текущие настройки как профиль</label>
+        <div class="key-row">
+          <input type="text" id="newProfileName" placeholder="например: Игра X" style="max-width:none; flex:1;" />
+          <button id="saveProfileBtn" class="secondary-btn">Сохранить</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="exportSection">
+      <h2>Экспорт / импорт <span class="pro-badge" id="exportBadge">Pro</span></h2>
+      <p class="hint">Перенести настройки и профили на другой компьютер (лицензионный ключ в файл
+        не попадает — при переносе его нужно ввести заново).</p>
+      <div class="field">
+        <div class="key-row">
+          <button id="exportBtn" class="secondary-btn">Экспортировать в файл</button>
+          <label for="importFile" class="secondary-btn" style="cursor:pointer;">Импортировать из файла</label>
+          <input type="file" id="importFile" accept="application/json" hidden />
+        </div>
+        <p class="hint" id="importMessage"></p>
+      </div>
+    </section>
+
+    <div class="status" id="status"></div>
+  </div>
+  <script src="license.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

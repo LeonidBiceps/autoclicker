@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0b1020" />
+    <meta
+      name="description"
+      content="Космоферма: стройте энергетическую империю. Ферма работает, даже когда вы закрыли игру."
+    />
+    <title>Космоферма</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b1020'/%3E%3Ccircle cx='32' cy='32' r='15' fill='%23ffd166'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237aa2f7' stroke-width='3'/%3E%3Ccircle cx='54' cy='32' r='4' fill='%237aa2f7'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- Фон и эффекты рисуются на отдельном слое под интерфейсом: так частицы
+         могут разлетаться поверх всего экрана, не мешая нажатиям. -->
+    <div id="bg" class="backdrop" aria-hidden="true"></div>
+
+    <!-- Слой метеорита и разлётов растянут на весь экран: метеорит должен уметь
+         пролетать поверх магазина, а не только над реактором. -->
+    <div id="fx" class="fx-layer" aria-hidden="true"></div>
+
+    <div id="app">
+      <header class="hud">
+        <div class="energy">
+          <b id="energy">0</b>
+          <span id="rate">0/сек</span>
+        </div>
+        <div class="stardust" id="stardust-box" hidden>
+          <span id="label-stardust">Звёздная пыль</span>
+          <b id="stardust">0</b>
+        </div>
+      </header>
+
+      <div id="boost" class="boost" hidden></div>
+
+      <main class="reactor-area">
+        <button id="reactor" class="reactor" type="button">
+          <span class="core"></span>
+          <span class="ring"></span>
+        </button>
+        <div id="per-click" class="per-click"></div>
+        <div id="floaters" class="floaters" aria-hidden="true"></div>
+      </main>
+
+      <div class="tabs" role="tablist">
+        <button id="tab-shop" class="tab active" type="button" role="tab" aria-selected="true">
+          Постройки
+        </button>
+        <button id="tab-perks" class="tab" type="button" role="tab" aria-selected="false">
+          Перки
+        </button>
+      </div>
+
+      <section class="shop">
+        <div id="shop-list" class="shop-list"></div>
+        <div id="perk-list-wrap" hidden>
+          <p id="perk-locked-hint" class="perk-hint" hidden></p>
+          <div id="perk-list" class="shop-list"></div>
+        </div>
+      </section>
+
+      <footer class="controls">
+        <button id="boost-btn" class="btn btn-reward" type="button"></button>
+        <button id="prestige" class="btn" type="button"></button>
+        <button id="leaders" class="btn btn-icon" type="button" aria-label="Таблица лидеров">
+          🏆
+        </button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Правила и помощь">❓</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">Космоферма</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "name": "@yg/__SLUG__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "__TITLE__"
+}

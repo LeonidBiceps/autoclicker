@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#141227" />
+    <meta
+      name="description"
+      content="Самоцветы: собирайте ряды из трёх и больше, ловите комбо — расслабляющий таймкиллер без ограничения по времени."
+    />
+    <title>Самоцветы</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23141227'/%3E%3Ccircle cx='22' cy='24' r='12' fill='%23e0245e'/%3E%3Ccircle cx='44' cy='24' r='12' fill='%232e86de'/%3E%3Ccircle cx='33' cy='44' r='12' fill='%23f6b93b'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="bg" class="backdrop" aria-hidden="true"></div>
+
+    <div id="app">
+      <header class="hud">
+        <div class="brand">Самоцветы</div>
+        <div class="scores">
+          <div class="score">
+            <span id="label-score">Счёт</span>
+            <b id="score">0</b>
+          </div>
+          <div class="score">
+            <span id="label-best">Рекорд</span>
+            <b id="best">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div id="boost" class="boost" hidden></div>
+
+      <div id="board" class="board"></div>
+
+      <footer class="controls">
+        <button id="boost-btn" class="btn btn-reward" type="button"></button>
+        <button id="shuffle-btn" class="btn btn-reward" type="button"></button>
+        <button id="restart" class="btn" type="button">Заново</button>
+        <button id="leaders" class="btn btn-icon" type="button" aria-label="Таблица лидеров">
+          🏆
+        </button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Правила и помощь">❓</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">Самоцветы</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

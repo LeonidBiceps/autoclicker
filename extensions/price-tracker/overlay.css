@@ -1,0 +1,59 @@
+.pt-widget {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 2147483647;
+  display: none;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  font: 12px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #1a1d24;
+  color: #eef0f4;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  max-width: 220px;
+}
+
+.pt-price {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pt-compare {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.pt-compare.pt-down {
+  color: #6fe08a;
+}
+
+.pt-compare.pt-up {
+  color: #ff8a8a;
+}
+
+.pt-min {
+  margin-top: 4px;
+  color: #9aa0ad;
+}
+
+.pt-spark {
+  margin-top: 6px;
+  line-height: 0;
+}
+
+.pt-close {
+  order: 2;
+  border: none;
+  background: transparent;
+  color: #6b7080;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pt-close:hover {
+  color: #eef0f4;
+}

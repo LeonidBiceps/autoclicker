@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Автокликер</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <h1>Автокликер <span class="tier-badge" id="tierBadge">Free</span></h1>
+
+    <section>
+      <div class="status-row">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Остановлен</span>
+      </div>
+      <div class="count" id="count">Кликов: 0</div>
+      <button id="toggleBtn" class="primary-btn" title="То же самое, что глобальный хоткей старт/стоп">Старт (F8)</button>
+      <p class="hint" id="note" hidden></p>
+    </section>
+
+    <section id="proSection">
+      <h2>👑 Pro <span title="Единый ключ работает и в этом приложении, и в браузерном расширении">ⓘ</span></h2>
+      <p class="hint" id="proStatus">Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.</p>
+      <div class="field">
+        <label for="licenseKey">Лицензионный ключ</label>
+        <div class="row">
+          <input type="text" id="licenseKey" placeholder="вставь ключ, который получил от продавца" />
+          <button id="activateBtn" class="secondary-btn">Активировать</button>
+        </div>
+        <p class="hint" id="licenseMessage"></p>
+        <p class="hint">Тот же ключ работает и в браузерном расширении «Автокликер» (если он не
+          привязан к этому компьютеру).</p>
+      </div>
+      <div class="field">
+        <label title="Покажи это продавцу перед покупкой, если хочешь ключ, который нельзя передать другому человеку">ID этого компьютера</label>
+        <div class="row">
+          <span class="key-name" id="machineIdValue" style="flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis;">…</span>
+          <button id="copyMachineIdBtn" class="secondary-btn">Скопировать</button>
+        </div>
+        <p class="hint">Необязательно. Просто дополнительная защита от передачи ключа другому
+          человеку — продавец сможет выпустить ключ, привязанный именно к этому ID.</p>
+      </div>
+    </section>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="click"><span class="tab-icon">🖱</span> Клик</button>
+      <button class="tab-btn" data-tab="hotkeys"><span class="tab-icon">⌨</span> Хоткеи</button>
+      <button class="tab-btn" data-tab="macros"><span class="tab-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
+      <button class="tab-btn" data-tab="profiles"><span class="tab-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
+      <button class="tab-btn" data-tab="system"><span class="tab-icon">⚙</span> Система</button>
+    </div>
+
+    <div class="tab-panel" data-panel="click">
+      <section>
+        <h2>🎯 Куда кликать</h2>
+        <div class="field">
+          <label title="Курсор — кликает там, где сейчас мышь. Точка — одно зафиксированное место. Последовательность — несколько точек по кругу">Режим</label>
+          <div class="segmented" id="modeSegmented">
+            <button type="button" class="seg-btn active" data-value="cursor">Курсор</button>
+            <button type="button" class="seg-btn" data-value="point">Точка</button>
+            <button type="button" class="seg-btn" data-value="sequence" id="modeSequenceBtn">Цепочка 🔒</button>
+          </div>
+        </div>
+        <div class="field" id="pickField">
+          <button id="pickBtn" class="secondary-btn">Выбрать точку на экране</button>
+          <p class="hint" id="pointHint">Точка не выбрана.</p>
+        </div>
+        <div class="field" id="sequenceField" hidden>
+          <div class="seq-list" id="seqList"></div>
+          <div class="row">
+            <button id="seqAddBtn" class="secondary-btn">Добавить точку</button>
+            <button id="seqClearBtn" class="secondary-btn">Очистить</button>
+          </div>
+          <p class="hint">На экране появятся синие кружки с номерами — так видно, где именно будут клики.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>⚡ Действие</h2>
+        <div class="field">
+          <label for="actionType">Что автоматизируем</label>
+          <select id="actionType">
+            <option value="mouse">Мышь</option>
+            <option value="keyboard">Клавиатура</option>
+          </select>
+        </div>
+        <div class="field" id="buttonField">
+          <label for="button">Кнопка мыши</label>
+          <select id="button">
+            <option value="left">Левая</option>
+            <option value="right">Правая</option>
+            <option value="double">Двойной клик</option>
+          </select>
+        </div>
+        <div class="field" id="keyField" hidden>
+          <label>Клавиша</label>
+          <div class="row">
+            <span class="key-name" id="keyName">Space</span>
+            <button id="setKeyBtn" class="secondary-btn">Установить клавишу</button>
+          </div>
+          <p class="hint">Нажми любую клавишу на клавиатуре после клика на кнопку. Работает в активном
+            окне ОС — что бы ни было в фокусе, туда и полетит нажатие.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>🚀 Скорость</h2>
+        <div class="field">
+          <label for="intervalMs" title="Пауза между кликами/нажатиями">Интервал, мс <span class="value-badge" id="intervalMsValue"></span></label>
+          <div class="slider-row">
+            <input type="range" id="intervalMsSlider" min="10" max="2000" step="10" />
+            <input type="number" id="intervalMs" min="10" step="10" class="slider-number" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="jitterMs" title="Чтобы клики не шли идеально равномерно">Разброс интервала, ± мс <span class="value-badge" id="jitterMsValue"></span></label>
+          <div class="slider-row">
+            <input type="range" id="jitterMsSlider" min="0" max="500" step="5" />
+            <input type="number" id="jitterMs" min="0" step="5" class="slider-number" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="positionJitterPx" title="Случайное смещение точки клика в этом радиусе">Разброс позиции клика, px <span class="pro-badge" id="posJitterBadge">Pro</span> <span class="value-badge" id="positionJitterPxValue"></span></label>
+          <div class="slider-row">
+            <input type="range" id="positionJitterPxSlider" min="0" max="200" step="1" />
+            <input type="number" id="positionJitterPx" min="0" step="1" class="slider-number" />
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" data-panel="hotkeys" hidden>
+      <section>
+        <h2>⌨️ Глобальные хоткеи <span title="Работают в любом окне ОС, не только когда открыто это приложение">ⓘ</span></h2>
+        <div class="field">
+          <label for="hotkey">Старт/стоп</label>
+          <input type="text" id="hotkey" maxlength="12" />
+        </div>
+        <div class="field">
+          <label for="panicHotkey">Аварийный стоп</label>
+          <input type="text" id="panicHotkey" maxlength="12" />
+        </div>
+        <div class="field">
+          <label for="recordHotkey">Остановить запись макроса <span class="pro-badge" id="recordHotkeyBadge">Pro</span></label>
+          <input type="text" id="recordHotkey" maxlength="12" />
+          <p class="hint">Формат: <code>F8</code>, <code>Ctrl+Shift+K</code> и т.п.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>⏱ Автостоп</h2>
+        <div class="field">
+          <label for="stopAfterClicks">Остановить после кликов</label>
+          <input type="number" id="stopAfterClicks" min="0" step="1" />
+          <p class="hint">0 — без ограничения (кроме бесплатного потолка в 5000).</p>
+        </div>
+        <div class="field">
+          <label for="stopAfterSeconds">Остановить через, сек</label>
+          <input type="number" id="stopAfterSeconds" min="0" step="1" />
+          <p class="hint">0 — без ограничения.</p>
+        </div>
+      </section>
+
+      <section id="scheduleSection">
+        <h2>📅 Отложенный старт <span class="pro-badge" id="scheduleBadge">Pro</span></h2>
+        <div class="field">
+          <label for="scheduleTime">Начать в</label>
+          <div class="row">
+            <input type="time" id="scheduleTime" />
+            <button id="scheduleSetBtn" class="secondary-btn">Запланировать</button>
+            <button id="scheduleCancelBtn" class="secondary-btn">Отмена</button>
+          </div>
+          <p class="hint" id="scheduleStatus"></p>
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" data-panel="macros" hidden>
+      <section id="macroSection">
+        <h2>🎬 Макросы (запись реальных кликов) <span class="pro-badge" id="macroBadge">Pro</span></h2>
+        <p class="hint">Записывает твои настоящие клики (позиция + тайминг) и воспроизводит один в
+          один. Только клики мышью, без клавиатуры.</p>
+        <div class="field">
+          <div class="row">
+            <button id="recordBtn" class="secondary-btn">Начать запись</button>
+            <button id="stopRecordBtn" class="secondary-btn" disabled>Остановить (F10)</button>
+          </div>
+          <p class="hint" id="recordStatus"></p>
+        </div>
+        <div class="field">
+          <div class="macro-list" id="macroList"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" data-panel="profiles" hidden>
+      <section id="profilesSection">
+        <h2>📁 Профили <span class="pro-badge" id="profilesBadge">Pro</span> <span title="Сохранённый набор настроек скорости/действия/автостопа под именем — быстро переключаться между играми">ⓘ</span></h2>
+        <div class="field">
+          <label for="profileSelect">Сохранённые профили</label>
+          <select id="profileSelect" style="max-width:none; width:100%;"></select>
+        </div>
+        <div class="field">
+          <div class="row">
+            <button id="applyProfileBtn" class="secondary-btn">Применить</button>
+            <button id="deleteProfileBtn" class="secondary-btn">Удалить</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="newProfileName">Сохранить текущие настройки как профиль</label>
+          <div class="row">
+            <input type="text" id="newProfileName" placeholder="например: Игра X" />
+            <button id="saveProfileBtn" class="secondary-btn">Сохранить</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="exportSection">
+        <h2>💾 Экспорт / импорт <span class="pro-badge" id="exportBadge">Pro</span></h2>
+        <div class="row">
+          <button id="exportBtn" class="secondary-btn">Экспортировать в файл</button>
+          <button id="importBtn" class="secondary-btn">Импортировать из файла</button>
+        </div>
+        <p class="hint" id="importMessage"></p>
+      </section>
+    </div>
+
+    <div class="tab-panel" data-panel="system" hidden>
+      <section>
+        <h2>🖥 Система</h2>
+        <label class="switch-row">
+          <span>Запускать при старте Windows</span>
+          <span class="switch">
+            <input type="checkbox" id="launchOnStartup" />
+            <span class="switch-slider"></span>
+          </span>
+        </label>
+        <label class="switch-row" id="launchMinimizedRow">
+          <span>При автозапуске не показывать окно (сразу в трей)</span>
+          <span class="switch">
+            <input type="checkbox" id="launchMinimized" />
+            <span class="switch-slider"></span>
+          </span>
+        </label>
+      </section>
+
+      <section class="donate-section">
+        <h2>💛 Поддержать разработку</h2>
+        <p class="hint">Если инструмент полезен — можно закинуть на разработку. Без подписки,
+          разово, сколько не жалко.</p>
+        <button id="donateBtn" class="donate-btn">💛 Поддержать автора</button>
+        <p class="hint" id="donateMessage"></p>
+      </section>
+    </div>
+
+    <div class="save-status" id="saveStatus"></div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

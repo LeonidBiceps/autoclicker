@@ -1,0 +1,7 @@
+{
+  "name": "@yg/merge2048",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "2048 — свайп-мердж с откатом хода и продолжением за рекламу"
+}

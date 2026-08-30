@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Тише — без раздражителей</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <h1>Тише</h1>
+    <p class="subtitle">Что прячем</p>
+
+    <label class="toggle">
+      <input type="checkbox" id="youtubeShorts" />
+      <span>YouTube Shorts</span>
+    </label>
+
+    <label class="toggle">
+      <input type="checkbox" id="instagramReels" />
+      <span>Instagram Reels</span>
+    </label>
+
+    <label class="toggle">
+      <input type="checkbox" id="facebookReels" />
+      <span>Facebook Reels</span>
+    </label>
+
+    <label class="toggle">
+      <input type="checkbox" id="cookieBanners" />
+      <span>Cookie-баннеры (авто-отклонить)</span>
+    </label>
+
+    <p class="hint">Изменения применяются сразу, без перезагрузки страницы.</p>
+
+    <p class="subtitle">Заблокировано всего</p>
+    <div class="stats" id="stats"></div>
+    <button id="resetStats" class="reset-btn">Сбросить счётчики</button>
+  </div>
+  <script src="settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

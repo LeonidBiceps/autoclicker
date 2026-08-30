@@ -1,0 +1,44 @@
+{
+  "name": "autoclicker-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Автокликер вне браузера — работает в любом окне/игре Windows.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-rebuild -f -w @nut-tree-fork/nut-js",
+    "dist": "node scripts/build-obfuscated.js",
+    "dist:raw": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0",
+    "javascript-obfuscator": "^5.6.0"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "uiohook-napi": "^1.5.5"
+  },
+  "build": {
+    "appId": "com.example.autoclicker-desktop",
+    "productName": "Автокликер",
+    "npmRebuild": false,
+    "win": {
+      "target": "portable",
+      "icon": "icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "pick-preload.js",
+      "license.js",
+      "store.js",
+      "keymap.js",
+      "icon.png",
+      "icon.ico",
+      "renderer/**/*",
+      "package.json"
+    ]
+  }
+}

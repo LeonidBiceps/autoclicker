@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#241224" />
+    <title>Клуб Свиданий</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="hud">
+        <div class="brand">💌 Клуб Свиданий</div>
+        <div class="stat-group">
+          <div class="stat" id="energy-stat">
+            <span>⚡</span>
+            <b id="energy">5/5</b>
+          </div>
+          <div class="stat">
+            <span>🪙</span>
+            <b id="coins">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div id="board" class="board">
+        <div id="dialogue" class="dialogue" hidden>
+          <div class="dialogue-box">
+            <div class="dialogue-name" id="dlg-name"></div>
+            <div class="dialogue-text" id="dlg-text"></div>
+            <div class="dialogue-choices" id="dlg-choices" hidden></div>
+            <div class="dialogue-hint" id="dlg-hint"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="controls">
+        <button id="hub" class="btn" type="button">💌 Клуб</button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Помощь">❓</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">💌 Клуб Свиданий</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

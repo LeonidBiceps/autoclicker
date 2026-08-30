@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Тише — без раздражителей",
+  "version": "1.1.0",
+  "description": "Прячет Shorts/Reels на YouTube, Instagram и Facebook, сам отклоняет cookie-баннеры. Считает, сколько заблокировал.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"],
+      "js": ["settings.js", "youtube.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://www.instagram.com/*"],
+      "js": ["settings.js", "instagram.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://www.facebook.com/*"],
+      "js": ["settings.js", "facebook.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["settings.js", "cookie-banner.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

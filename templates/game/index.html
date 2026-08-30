@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0f1117" />
+    <title>__TITLE__</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="hud">
+        <div class="brand">__TITLE__</div>
+        <div class="score">
+          <span>Счёт</span>
+          <b id="score">0</b>
+        </div>
+      </header>
+
+      <div id="board" class="board"></div>
+
+      <footer class="controls">
+        <button id="restart" class="btn" type="button">Заново</button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">__TITLE__</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

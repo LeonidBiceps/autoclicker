@@ -1,0 +1,7 @@
+{
+  "name": "@yg/astroassault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Астроштурм — арена-стрелялка с волнами, магазином между боями и перками за медали"
+}

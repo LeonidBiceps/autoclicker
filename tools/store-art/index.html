@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Магазинные ассеты</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #12141b;
+        color: #e8ecf4;
+        font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .hint {
+        color: #8b93a7;
+        margin-bottom: 20px;
+      }
+      #log {
+        margin-bottom: 20px;
+        font-variant-numeric: tabular-nums;
+      }
+      #log div {
+        padding: 2px 0;
+      }
+      .ok {
+        color: #9ece6a;
+      }
+      .err {
+        color: #f7768e;
+      }
+      #out {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        color: #8b93a7;
+        font-size: 12px;
+        padding-top: 6px;
+      }
+      canvas {
+        display: block;
+        max-width: 320px;
+        height: auto;
+        border-radius: 6px;
+        background: #000;
+      }
+      iframe {
+        position: fixed;
+        left: -2000px;
+        top: 0;
+        width: 480px;
+        height: 720px;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Магазинные ассеты</h1>
+    <div class="hint">
+      Файлы сохраняются в <code>games/&lt;игра&gt;/store/</code> автоматически.
+      Скриншоты собираются из настоящего игрового поля, а не рисуются заново.
+    </div>
+    <div id="log"></div>
+    <div id="out"></div>
+    <iframe id="probe" title="игра для съёмки"></iframe>
+
+    <script type="module">
+      const params = new URLSearchParams(location.search);
+      const slug = params.get('slug') ?? 'merge2048';
+
+      const logEl = document.getElementById('log');
+      const outEl = document.getElementById('out');
+
+      const log = (text, cls = '') => {
+        const line = document.createElement('div');
+        line.className = cls;
+        line.textContent = text;
+        logEl.appendChild(line);
+      };
+
+      /**
+       * Оформление на игру. Ассеты — это айдентика, а не механика, поэтому
+       * держим их описание отдельным: новой игре достаточно добавить блок.
+       */
+      const ART = {
+        merge2048: {
+          title: '2048',
+          tagline: 'Складывай плитки. Доберись до 2048.',
+          bg: '#faf8ef',
+          panel: '#bbada0',
+          ink: '#776e65',
+          accent: '#edc22e',
+          tiles: [
+            ['2', '#eee4da', '#776e65'],
+            ['4', '#ede0c8', '#776e65'],
+            ['8', '#f2b179', '#f9f6f2'],
+            ['16', '#f59563', '#f9f6f2'],
+            ['32', '#f67c5f', '#f9f6f2'],
+            ['64', '#f65e3b', '#f9f6f2'],
+            ['128', '#edcf72', '#f9f6f2'],
+            ['2048', '#edc22e', '#f9f6f2'],
+          ],
+          shots: [
+            { moves: 20, caption: 'Свайпай в любую сторону' },
+            { moves: 140, caption: 'Одинаковые плитки сливаются' },
+            { moves: 400, caption: 'Отменяй ошибки и играй дальше' },
+          ],
+        },
+        gems: {
+          title: 'Самоцветы',
+          tagline: 'Собирай ряды из трёх и ловите комбо.',
+          bg: '#141227',
+          panel: '#292450',
+          ink: '#f0edff',
+          accent: '#f6b93b',
+          cardBg: '#1f1c3a',
+          shape: 'circle',
+          tiles: [
+            ['', '#e0245e', '#ff6b9a'],
+            ['', '#2e86de', '#6fb1ff'],
+            ['', '#10ac84', '#4ee6bb'],
+            ['', '#f6b93b', '#ffd873'],
+            ['', '#8854d0', '#b389f0'],
+            ['', '#f97f51', '#ffab7a'],
+            ['', '#e0245e', '#ff6b9a'],
+            ['', '#2e86de', '#6fb1ff'],
+          ],
+          captureMode: 'debug-swap',
+          shots: [
+            { moves: 1, caption: 'Меняй местами соседние камни' },
+            { moves: 3, caption: 'Собирай цепочки — комбо приносит больше' },
+            { moves: 6, caption: 'Бесконечный режим без ограничения по времени' },
+          ],
+        },
+        starfarm: {
+          title: 'Космоферма',
+          tagline: 'Стройте энергетическую империю — она растёт, даже пока вы не в игре.',
+          bg: '#0b1020',
+          panel: '#151b2e',
+          ink: '#e8ecf4',
+          accent: '#ffd166',
+          cardBg: '#151b2e',
+          shape: 'circle',
+          // Интерфейс фермы — целиком DOM, не канвас: живой кадр снять неоткуда,
+          // поэтому иконка/обложка/скриншоты — единый стилизованный мокап
+          // реактора, а не буквальный снимок страницы.
+          captureMode: 'mockup',
+          // Иконка/обложка используют общую сетку кругов — 8 записей чередуют
+          // золотой и синий, ту же пару, что несёт вся палитра фермы.
+          tiles: Array.from({ length: 8 }, (_, i) =>
+            i % 2 === 0 ? ['', '#ffd166', '#fff3c4'] : ['', '#7aa2f7', '#a9c4ff'],
+          ),
+          shots: [
+            { owned: [2, 0, 0, 0, 0, 0], caption: 'Стройте генераторы энергии' },
+            { owned: [10, 5, 1, 0, 0, 0], caption: 'Ловите золотые метеориты' },
+            { owned: [14, 10, 4, 2, 1, 0], caption: 'Копит энергию, даже пока вы офлайн' },
+          ],
+        },
+        astroassault: {
+          title: 'Астроштурм',
+          tagline: 'Отражайте волны врагов, прыгайте по платформам и прокачивайтесь между боями.',
+          bg: '#0b0f1a',
+          panel: '#151b2e',
+          ink: '#e8ecf4',
+          accent: '#ffd166',
+          cardBg: '#0e1224',
+          // Живая арена собирается на офскрин-канвасе через window.__debug.renderPreview —
+          // то же самое дерево отрисовки, что и в реальном забеге, просто без игрока за пультом.
+          captureMode: 'live',
+          async liveCapture(win) {
+            const battle = win.__debug.renderPreview(1280, 720, { ticks: 210 });
+            const jumpShot = win.__debug.renderPreview(1280, 720, { ticks: 130, jump: true });
+            const lateShot = win.__debug.renderPreview(1280, 720, { ticks: 380 });
+            return {
+              icon: { image: battle.canvas, focus: battle.player, zoom: 0.55 },
+              cover: battle.canvas,
+              shots: [
+                { image: battle.canvas, caption: 'Отражайте волны врагов' },
+                { image: jumpShot.canvas, caption: 'Прыгайте по платформам, уклоняйтесь от атак' },
+                { image: lateShot.canvas, caption: 'Прокачивайте оружие и классы между волнами' },
+              ],
+            };
+          },
+        },
+        lovestory: {
+          title: 'Клуб Свиданий',
+          tagline: 'Выбирайте, с кем из ребят продолжить историю, и завоёвывайте их сердца.',
+          bg: '#12102a',
+          panel: '#1b1a3a',
+          ink: '#f5f0ff',
+          accent: '#ff6f9a',
+          cardBg: '#0f0e24',
+          captureMode: 'live',
+          async liveCapture(win) {
+            const artem = win.__debug.renderPreview(1280, 720, 'artem', 'smile', 'cafeteria');
+            const daniil = win.__debug.renderPreview(1280, 720, 'daniil', 'smile', 'rooftop');
+            const ruslan = win.__debug.renderPreview(1280, 720, 'ruslan', 'smile', 'observatory');
+            return {
+              // Портрет в drawScene центрирован на (w/2, h*0.34); лицо (глаза/рот)
+              // читается чуть ниже макушки — берём фокус там, а не по центру
+              // всей фигуры, иначе кадр иконки обрезает по волосам.
+              icon: { image: artem, focus: { x: 1280 / 2, y: 720 * 0.34 + 30 }, zoom: 0.5 },
+              cover: daniil,
+              shots: [
+                { image: artem, caption: 'Артём — капитан сборной по плаванию' },
+                { image: daniil, caption: 'Даниил — гитара на крыше по вечерам' },
+                { image: ruslan, caption: 'Руслан — блогер о космосе на 40 тысяч подписчиков' },
+              ],
+            };
+          },
+        },
+        towerstack: {
+          title: 'Башня',
+          tagline: 'Ловите момент и роняйте блоки максимально ровно — чем выше, тем быстрее.',
+          bg: '#1a1030',
+          panel: '#2a1d45',
+          ink: '#f5f0ff',
+          accent: '#ff9f5a',
+          cardBg: '#160f28',
+          captureMode: 'live',
+          async liveCapture(win) {
+            // Игра сама по себе портретная (узкая колонка, башня растёт вверх) —
+            // снимаем в её естественных пропорциях, а не в альбомных 1280×720:
+            // иначе камера кадрирует так же, как на реальном узком экране,
+            // и в широкий холст попадает только нижняя пара блоков.
+            const short = win.__debug.renderPreview(520, 760, 6);
+            const mid = win.__debug.renderPreview(520, 760, 13);
+            const tall = win.__debug.renderPreview(520, 760, 22);
+            return {
+              icon: { image: mid, focus: { x: 520 / 2, y: 760 * 0.55 }, zoom: 0.55 },
+              cover: tall,
+              shots: [
+                { image: short, caption: 'Тапните, чтобы уронить блок' },
+                { image: mid, caption: 'Идеальное попадание сохраняет всю ширину' },
+                { image: tall, caption: 'С высотой блоки едут быстрее' },
+              ],
+            };
+          },
+        },
+      };
+
+      const art = ART[slug];
+      if (!art) {
+        log(`нет описания оформления для «${slug}» — добавьте блок в tools/store-art/index.html`, 'err');
+        throw new Error('no art config');
+      }
+
+      const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+      function roundRect(ctx, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
+      }
+
+      function fitText(ctx, text, maxWidth, startSize, weight = '800') {
+        let size = startSize;
+        do {
+          ctx.font = `${weight} ${size}px ${FONT}`;
+          if (ctx.measureText(text).width <= maxWidth) break;
+          size -= 2;
+        } while (size > 8);
+        return size;
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function makeCanvas(w, h) {
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        return canvas;
+      }
+
+      /**
+       * Рисует плитку — общий элемент иконки, обложки и фона скриншота.
+       * Форма берётся из `art.shape`: квадрат с числом для мерджей, круглый
+       * самоцвет с бликом для match-3 — то же различие, что и в самих играх.
+       */
+      function drawTile(ctx, x, y, size, label, bg, fg) {
+        if (art.shape === 'circle') {
+          const cx = x + size / 2;
+          const cy = y + size / 2;
+          const r = size * 0.42;
+          const grad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+          grad.addColorStop(0, fg);
+          grad.addColorStop(1, bg);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.beginPath();
+          ctx.ellipse(cx - r * 0.32, cy - r * 0.34, r * 0.32, r * 0.18, -0.5, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+
+        ctx.fillStyle = bg;
+        roundRect(ctx, x, y, size, size, size * 0.12);
+        ctx.fill();
+        if (!label) return;
+        const fontSize = fitText(ctx, label, size * 0.78, size * 0.42);
+        ctx.fillStyle = fg;
+        ctx.font = `800 ${fontSize}px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x + size / 2, y + size / 2 + fontSize * 0.04);
+      }
+
+      // ── иконка ───────────────────────────────────────────────────────────
+
+      function drawIcon(size) {
+        const canvas = makeCanvas(size, size);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = art.panel;
+        ctx.fillRect(0, 0, size, size);
+
+        // Игры с живым захватом (не тайловая сетка) кадрируют квадрат вокруг
+        // фокальной точки настоящего кадра игры — тот же принцип, что и в
+        // обложке/скриншотах: иконка показывает реальную картинку, а не макет.
+        if (art.boardImage) {
+          const img = art.boardImage;
+          const zoom = art.boardImageZoom ?? 0.55;
+          const crop = Math.min(img.width, img.height) * zoom;
+          const focus = art.boardImageFocus ?? { x: img.width / 2, y: img.height / 2 };
+          const sx = clamp(focus.x - crop / 2, 0, img.width - crop);
+          const sy = clamp(focus.y - crop / 2, 0, img.height - crop);
+          const pad = size * 0.05;
+          ctx.save();
+          roundRect(ctx, pad, pad, size - pad * 2, size - pad * 2, size * 0.16);
+          ctx.clip();
+          ctx.drawImage(img, sx, sy, crop, crop, pad, pad, size - pad * 2, size - pad * 2);
+          ctx.restore();
+          return canvas;
+        }
+
+        // Четыре плитки 2×2: на мелких размерах читается как узнаваемое пятно,
+        // на крупных видно, что это именно 2048.
+        const pad = size * 0.08;
+        const gap = size * 0.05;
+        const cell = (size - pad * 2 - gap) / 2;
+        const picks = [art.tiles[0], art.tiles[2], art.tiles[3], art.tiles[7]];
+        picks.forEach((tile, i) => {
+          const x = pad + (i % 2) * (cell + gap);
+          const y = pad + Math.floor(i / 2) * (cell + gap);
+          drawTile(ctx, x, y, cell, tile[0], tile[1], tile[2]);
+        });
+
+        return canvas;
+      }
+
+      // ── обложка ──────────────────────────────────────────────────────────
+
+      function drawCover(w, h) {
+        const canvas = makeCanvas(w, h);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = art.bg;
+        ctx.fillRect(0, 0, w, h);
+
+        // Правая половина — поле, левая — название. Такой раскладке не мешает
+        // обрезка краёв, которую каталог делает под разные слоты.
+        const boardSize = h * 0.82;
+        const boardX = w - boardSize - h * 0.09;
+        const boardY = (h - boardSize) / 2;
+
+        if (art.boardImage) {
+          const img = art.boardImage;
+          const crop = Math.min(img.width, img.height);
+          const sx = (img.width - crop) / 2;
+          const sy = (img.height - crop) / 2;
+          ctx.save();
+          roundRect(ctx, boardX, boardY, boardSize, boardSize, boardSize * 0.05);
+          ctx.clip();
+          ctx.fillStyle = art.panel;
+          ctx.fillRect(boardX, boardY, boardSize, boardSize);
+          ctx.drawImage(img, sx, sy, crop, crop, boardX, boardY, boardSize, boardSize);
+          ctx.restore();
+        } else {
+        ctx.fillStyle = art.panel;
+        roundRect(ctx, boardX, boardY, boardSize, boardSize, boardSize * 0.05);
+        ctx.fill();
+
+        const gap = boardSize * 0.035;
+        const cell = (boardSize - gap * 5) / 4;
+        const layout = [
+          [null, art.tiles[0], null, art.tiles[1]],
+          [art.tiles[2], null, art.tiles[3], null],
+          [null, art.tiles[4], art.tiles[5], null],
+          [art.tiles[6], null, null, art.tiles[7]],
+        ];
+        layout.forEach((row, r) =>
+          row.forEach((tile, c) => {
+            const x = boardX + gap + c * (cell + gap);
+            const y = boardY + gap + r * (cell + gap);
+            if (!tile) {
+              ctx.fillStyle = 'rgba(238,228,218,0.35)';
+              roundRect(ctx, x, y, cell, cell, cell * 0.12);
+              ctx.fill();
+              return;
+            }
+            drawTile(ctx, x, y, cell, tile[0], tile[1], tile[2]);
+          }),
+        );
+        }
+
+        const textLeft = h * 0.1;
+        const textWidth = boardX - textLeft - h * 0.06;
+
+        const titleSize = fitText(ctx, art.title, textWidth, h * 0.3);
+        ctx.fillStyle = art.ink;
+        ctx.font = `800 ${titleSize}px ${FONT}`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(art.title, textLeft, h * 0.5);
+
+        ctx.fillStyle = art.accent;
+        roundRect(ctx, textLeft, h * 0.54, textWidth * 0.42, h * 0.018, h * 0.01);
+        ctx.fill();
+
+        // Подзаголовок переносим по словам: длина строки зависит от языка.
+        const taglineSize = Math.round(h * 0.058);
+        ctx.font = `600 ${taglineSize}px ${FONT}`;
+        ctx.fillStyle = art.ink;
+        const words = art.tagline.split(' ');
+        let line = '';
+        let ty = h * 0.66;
+        for (const word of words) {
+          const next = line ? `${line} ${word}` : word;
+          if (ctx.measureText(next).width > textWidth && line) {
+            ctx.fillText(line, textLeft, ty);
+            ty += taglineSize * 1.25;
+            line = word;
+          } else {
+            line = next;
+          }
+        }
+        if (line) ctx.fillText(line, textLeft, ty);
+
+        return canvas;
+      }
+
+      // ── стилизованный мокап (для DOM-игр без канваса) ──────────────────────
+
+      /** Тот же формат коротких чисел, что и в @yg/engine — маленький, не тянуть модуль ради него. */
+      function formatShort(value) {
+        if (value < 1000) return String(Math.floor(value));
+        const suffixes = ['', 'K', 'M', 'B', 'T'];
+        const tier = Math.min(Math.floor(Math.log10(value) / 3), suffixes.length - 1);
+        const scaled = value / 1000 ** tier;
+        return `${scaled.toFixed(scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2)}${suffixes[tier]}`;
+      }
+
+      const MOCKUP_RATES = [0.1, 1, 8, 47, 260, 1400];
+      const MOCKUP_NAMES = ['Солнечная панель', 'Гидропонная ферма', 'Дрон-сборщик', 'Плавильня', 'Орбитальное зеркало', 'Червоточина'];
+      const MOCKUP_ICONS = ['☀️', '🌱', '🛸', '🔥', '🪞', '🌀'];
+
+      function drawStarfarmMockup(w, h, shot) {
+        const canvas = makeCanvas(w, h);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = art.bg;
+        ctx.fillRect(0, 0, w, h);
+
+        // Немного звёзд на фоне — дёшево отличает пустой тёмный фон от космоса.
+        let seed = 42;
+        const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+        for (let i = 0; i < 90; i += 1) {
+          ctx.globalAlpha = 0.25 + rnd() * 0.55;
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(rnd() * w, rnd() * h, 0.6 + rnd() * 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        const rate = shot.owned.reduce((sum, n, i) => sum + n * MOCKUP_RATES[i], 0);
+        const energy = rate * 900; // правдоподобная накопленная сумма для показа
+
+        // Реактор слева — крупный светящийся круг, визуальный якорь кадра.
+        const rx = w * 0.27;
+        const ry = h * 0.42;
+        const rr = h * 0.22;
+        const grad = ctx.createRadialGradient(rx - rr * 0.3, ry - rr * 0.3, rr * 0.1, rx, ry, rr);
+        grad.addColorStop(0, '#fff3c4');
+        grad.addColorStop(1, art.accent);
+        ctx.fillStyle = grad;
+        ctx.shadowColor = art.accent;
+        ctx.shadowBlur = rr * 0.5;
+        ctx.beginPath();
+        ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = 'rgba(122,162,247,0.6)';
+        ctx.lineWidth = h * 0.008;
+        ctx.beginPath();
+        ctx.arc(rx, ry, rr * 1.22, 0, Math.PI * 1.5);
+        ctx.stroke();
+
+        // HUD: энергия и скорость добычи над реактором.
+        ctx.textAlign = 'center';
+        ctx.fillStyle = art.accent;
+        ctx.font = `800 ${Math.round(h * 0.09)}px ${FONT}`;
+        ctx.fillText(formatShort(energy), rx, ry - rr * 1.55);
+        ctx.fillStyle = art.ink;
+        ctx.globalAlpha = 0.7;
+        ctx.font = `600 ${Math.round(h * 0.035)}px ${FONT}`;
+        ctx.fillText(`${formatShort(rate)}/сек`, rx, ry - rr * 1.55 + h * 0.05);
+        ctx.globalAlpha = 1;
+
+        // Панель построек справа — список из иконки/названия/цены.
+        const listX = w * 0.53;
+        const listW = w * 0.42;
+        const rowH = h * 0.15;
+        const rowGap = h * 0.03;
+        const listTop = h * 0.22;
+
+        shot.owned.forEach((count, i) => {
+          if (count <= 0) return;
+          const rows = shot.owned.filter((c, j) => j <= i && c > 0).length - 1;
+          const y = listTop + rows * (rowH + rowGap);
+          if (y + rowH > h * 0.86) return;
+
+          ctx.fillStyle = art.panel;
+          roundRect(ctx, listX, y, listW, rowH, rowH * 0.22);
+          ctx.fill();
+
+          ctx.textAlign = 'left';
+          ctx.font = `${Math.round(rowH * 0.45)}px ${FONT}`;
+          ctx.fillText(MOCKUP_ICONS[i], listX + rowH * 0.25, y + rowH * 0.62);
+
+          ctx.fillStyle = art.ink;
+          ctx.font = `700 ${Math.round(rowH * 0.24)}px ${FONT}`;
+          ctx.fillText(MOCKUP_NAMES[i], listX + rowH * 0.95, y + rowH * 0.42);
+
+          ctx.globalAlpha = 0.65;
+          ctx.font = `600 ${Math.round(rowH * 0.2)}px ${FONT}`;
+          ctx.fillText(`× ${count}`, listX + rowH * 0.95, y + rowH * 0.72);
+          ctx.globalAlpha = 1;
+        });
+
+        // Подпись снизу — тот же приём, что и на живых скриншотах.
+        const captionSize = fitText(ctx, shot.caption, w * 0.86, h * 0.055, '700');
+        ctx.textAlign = 'center';
+        ctx.fillStyle = art.ink;
+        ctx.font = `700 ${captionSize}px ${FONT}`;
+        ctx.fillText(shot.caption, w / 2, h * 0.93);
+
+        return canvas;
+      }
+
+      /**
+       * Скриншот из готового живого кадра (канвас пришёл из window.__debug
+       * игры) — карточка с тенью и подпись снизу, тот же язык, что и у
+       * скриншотов, собранных через captureBoard/drawScreenshot.
+       */
+      function drawLiveCard(w, h, image, caption) {
+        const canvas = makeCanvas(w, h);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = art.bg;
+        ctx.fillRect(0, 0, w, h);
+
+        const maxPanelH = h * 0.82;
+        const maxPanelW = w * 0.92;
+        let panelW = maxPanelW;
+        let panelH = panelW * (image.height / image.width);
+        if (panelH > maxPanelH) {
+          panelH = maxPanelH;
+          panelW = panelH * (image.width / image.height);
+        }
+        const panelX = (w - panelW) / 2;
+        const panelY = h * 0.06;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = h * 0.05;
+        ctx.shadowOffsetY = h * 0.012;
+        ctx.fillStyle = art.cardBg ?? '#000';
+        roundRect(ctx, panelX, panelY, panelW, panelH, h * 0.03);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        roundRect(ctx, panelX, panelY, panelW, panelH, h * 0.03);
+        ctx.clip();
+        ctx.drawImage(image, panelX, panelY, panelW, panelH);
+        ctx.restore();
+
+        const captionY = panelY + panelH + h * 0.06;
+        const captionSize = fitText(ctx, caption, w * 0.88, h * 0.055, '700');
+        ctx.fillStyle = art.ink;
+        ctx.font = `700 ${captionSize}px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(caption, w / 2, captionY);
+
+        return canvas;
+      }
+
+      /** Ждёт, пока dev-сборка игры выставит window.__debug — до 15с, иначе ошибка. */
+      function waitForDebug(win) {
+        return new Promise((resolve, reject) => {
+          const start = Date.now();
+          const poll = () => {
+            if (win.__debug) {
+              resolve(win.__debug);
+              return;
+            }
+            if (Date.now() - start > 15000) {
+              reject(new Error('нет window.__debug — игра собрана не в dev-режиме'));
+              return;
+            }
+            setTimeout(poll, 100);
+          };
+          poll();
+        });
+      }
+
+      // ── скриншоты из живой игры ──────────────────────────────────────────
+
+      const probe = document.getElementById('probe');
+
+      function loadGame() {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('игра не загрузилась')), 15000);
+          probe.onload = () => {
+            clearTimeout(timer);
+            // Даём игре снять прелоадер и отрисовать первый кадр.
+            setTimeout(() => resolve(probe.contentWindow), 1200);
+          };
+          probe.src = `/?mock=1&lang=ru&nosave=1`;
+        });
+      }
+
+      async function captureBoard(win, moves) {
+        if (art.captureMode === 'debug-swap') {
+          // Своп через клавиши здесь не годится — управление в этой игре
+          // указательное (тап/драг). Дёргаем модель напрямую через дев-хук
+          // и сразу форсируем синхронную перерисовку: так кадр не зависит от
+          // того, тикает ли requestAnimationFrame именно в этот момент.
+          const debug = win.__debug;
+          if (!debug) throw new Error('нет window.__debug — игра собрана не в dev-режиме');
+          for (let i = 0; i < moves; i += 1) {
+            const move = debug.board.findAnyValidMove();
+            if (!move) break;
+            debug.board.trySwap(move.a, move.b);
+          }
+          debug.syncHud?.();
+          debug.renderer.draw(debug.board, null, null);
+        } else {
+          const codes = ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'];
+          for (let i = 0; i < moves; i += 1) {
+            win.dispatchEvent(new win.KeyboardEvent('keydown', { code: codes[i % 4], bubbles: true }));
+            if (i % 60 === 0) await new Promise((r) => setTimeout(r, 0));
+          }
+          // Ждём, пока доиграет анимация последнего хода.
+          await new Promise((r) => setTimeout(r, 500));
+        }
+
+        const doc = win.document;
+        const canvas = doc.querySelector('#board canvas');
+        if (!canvas) throw new Error('не нашёл канвас игры');
+        return {
+          image: canvas,
+          score: doc.getElementById('score')?.textContent ?? '0',
+          best: doc.getElementById('best')?.textContent ?? '0',
+          // Модалка проигрыша на промо-скриншоте не нужна.
+          modalOpen: !doc.getElementById('overlay')?.hidden,
+        };
+      }
+
+      function drawScreenshot(w, h, capture, caption) {
+        const canvas = makeCanvas(w, h);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = art.bg;
+        ctx.fillRect(0, 0, w, h);
+
+        // Крупная полупрозрачная плитка на фоне — чтобы кадр не был пустым.
+        ctx.globalAlpha = 0.12;
+        drawTile(ctx, -h * 0.12, h * 0.42, h * 0.6, art.title, art.accent, art.bg);
+        ctx.globalAlpha = 1;
+
+        const panelH = h * 0.86;
+        const panelW = panelH * 0.72;
+        const panelX = (w - panelW) / 2;
+        const panelY = (h - panelH) / 2;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = h * 0.05;
+        ctx.shadowOffsetY = h * 0.012;
+        ctx.fillStyle = art.cardBg ?? '#fff';
+        roundRect(ctx, panelX, panelY, panelW, panelH, h * 0.04);
+        ctx.fill();
+        ctx.restore();
+
+        // Шапка со счётом — повторяет интерфейс игры, но нарисована здесь,
+        // потому что DOM в канвас не снимается.
+        const pad = panelW * 0.07;
+        const chipH = panelH * 0.09;
+        const chipW = (panelW - pad * 2 - pad * 0.4) / 2;
+        const chipY = panelY + pad * 0.8;
+
+        [
+          ['СЧЁТ', capture.score],
+          ['РЕКОРД', capture.best],
+        ].forEach(([label, value], i) => {
+          const x = panelX + pad + i * (chipW + pad * 0.4);
+          ctx.fillStyle = art.panel;
+          roundRect(ctx, x, chipY, chipW, chipH, chipH * 0.22);
+          ctx.fill();
+
+          ctx.fillStyle = 'rgba(249,246,242,0.75)';
+          ctx.font = `700 ${Math.round(chipH * 0.24)}px ${FONT}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(label, x + chipW / 2, chipY + chipH * 0.16);
+
+          ctx.fillStyle = '#f9f6f2';
+          ctx.font = `800 ${Math.round(chipH * 0.42)}px ${FONT}`;
+          ctx.fillText(value, x + chipW / 2, chipY + chipH * 0.46);
+        });
+
+        // Само поле — реальный кадр из игры.
+        const boardTop = chipY + chipH + pad * 0.7;
+        const boardSize = panelW - pad * 2;
+        const src = capture.image;
+        // Канвас игры не квадратный: вырезаем из него центральный квадрат.
+        const side = Math.min(src.width, src.height);
+        ctx.drawImage(
+          src,
+          (src.width - side) / 2,
+          (src.height - side) / 2,
+          side,
+          side,
+          panelX + pad,
+          boardTop,
+          boardSize,
+          boardSize,
+        );
+
+        // Подпись под полем.
+        const captionY = boardTop + boardSize + pad * 0.75;
+        const captionSize = fitText(ctx, caption, panelW - pad * 2, panelH * 0.05, '700');
+        ctx.fillStyle = art.ink;
+        ctx.font = `700 ${captionSize}px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(caption, panelX + panelW / 2, captionY);
+
+        return canvas;
+      }
+
+      // ── сохранение ───────────────────────────────────────────────────────
+
+      async function save(canvas, name, label) {
+        const dataUrl = canvas.toDataURL('image/png');
+        const res = await fetch('/__save-asset', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ slug, name, dataUrl }),
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          log(`${name} — ошибка: ${json.error}`, 'err');
+          return;
+        }
+        log(`${name} — ${(json.bytes / 1024).toFixed(1)} КБ`, 'ok');
+
+        const fig = document.createElement('figure');
+        const caption = document.createElement('figcaption');
+        caption.textContent = `${label} · ${canvas.width}×${canvas.height}`;
+        fig.append(canvas, caption);
+        outEl.appendChild(fig);
+      }
+
+      // ── прогон ───────────────────────────────────────────────────────────
+
+      async function run() {
+        // Съёмка гоняет настоящую игру и перезаписала бы сейв игрока —
+        // снимаем копию хранилища и возвращаем как было.
+        const backup = { ...localStorage };
+
+        try {
+          log(`игра: ${slug}`);
+
+          if (art.captureMode === 'mockup') {
+            await save(drawIcon(512), 'icon-512.png', 'Иконка');
+            await save(drawCover(800, 470), 'cover-800x470.png', 'Обложка');
+            for (let i = 0; i < art.shots.length; i += 1) {
+              const shot = art.shots[i];
+              await save(drawStarfarmMockup(1280, 720, shot), `screenshot-${i + 1}-1280x720.png`, `Скриншот ${i + 1}`);
+            }
+            log('готово', 'ok');
+            return;
+          }
+
+          if (art.captureMode === 'live') {
+            log('запускаю игру для съёмки…');
+            const win = await loadGame();
+            await waitForDebug(win);
+            const captured = await art.liveCapture(win);
+
+            art.boardImage = captured.icon.image;
+            art.boardImageFocus = captured.icon.focus;
+            art.boardImageZoom = captured.icon.zoom;
+            await save(drawIcon(512), 'icon-512.png', 'Иконка');
+
+            art.boardImage = captured.cover;
+            await save(drawCover(800, 470), 'cover-800x470.png', 'Обложка');
+
+            for (let i = 0; i < captured.shots.length; i += 1) {
+              const shot = captured.shots[i];
+              await save(
+                drawLiveCard(1280, 720, shot.image, shot.caption),
+                `screenshot-${i + 1}-1280x720.png`,
+                `Скриншот ${i + 1}`,
+              );
+            }
+            log('готово', 'ok');
+            return;
+          }
+
+          await save(drawIcon(512), 'icon-512.png', 'Иконка');
+          await save(drawCover(800, 470), 'cover-800x470.png', 'Обложка');
+
+          log('запускаю игру для съёмки…');
+          const win = await loadGame();
+
+          for (let i = 0; i < art.shots.length; i += 1) {
+            const shot = art.shots[i];
+            const capture = await captureBoard(win, shot.moves);
+            if (capture.modalOpen) {
+              // Партия кончилась раньше — начинаем заново, кадр с модалкой
+              // в магазин не годится.
+              win.document.getElementById('overlay').hidden = true;
+            }
+            await save(
+              drawScreenshot(1280, 720, capture, shot.caption),
+              `screenshot-${i + 1}-1280x720.png`,
+              `Скриншот ${i + 1}`,
+            );
+          }
+
+          log('готово', 'ok');
+        } catch (error) {
+          log(String(error?.message ?? error), 'err');
+        } finally {
+          localStorage.clear();
+          for (const [k, v] of Object.entries(backup)) localStorage.setItem(k, v);
+          probe.src = 'about:blank';
+        }
+      }
+
+      void run();
+    </script>
+  </body>
+</html>

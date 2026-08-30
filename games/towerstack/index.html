@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#1a1030" />
+    <meta
+      name="description"
+      content="Башня: ловите момент и роняйте блоки максимально ровно — чем выше, тем быстрее."
+    />
+    <title>Башня</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231a1030'/%3E%3Crect x='14' y='38' width='36' height='12' rx='2' fill='%23ff9f5a'/%3E%3Crect x='18' y='24' width='28' height='12' rx='2' fill='%23ffd166'/%3E%3Crect x='22' y='10' width='20' height='12' rx='2' fill='%237fe0c0'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="hud">
+        <div class="brand">Башня</div>
+        <div class="scores">
+          <div class="score">
+            <span id="label-score">Счёт</span>
+            <b id="score">0</b>
+          </div>
+          <div class="score">
+            <span id="label-best">Рекорд</span>
+            <b id="best">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div id="board" class="board">
+        <div id="tap-hint" class="tap-hint">Тапните, чтобы уронить блок</div>
+      </div>
+
+      <footer class="controls">
+        <button id="restart" class="btn" type="button">Заново</button>
+        <button id="leaders" class="btn btn-icon" type="button" aria-label="Таблица лидеров">
+          🏆
+        </button>
+        <button id="sound" class="btn btn-icon" type="button" aria-label="Звук">🔊</button>
+        <button id="help" class="btn btn-icon" type="button" aria-label="Правила и помощь">❓</button>
+      </footer>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <div id="loader" class="loader">
+      <div class="loader-title">Башня</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

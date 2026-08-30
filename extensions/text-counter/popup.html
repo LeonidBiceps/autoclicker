@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Счётчик текста</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      width: 240px;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #16181d;
+      color: #eef0f4;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 0 0 12px;
+    }
+    label.toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    label.toggle input {
+      width: 16px;
+      height: 16px;
+      accent-color: #5b8cff;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #9aa0ad;
+      margin-bottom: 4px;
+    }
+    .field select,
+    .field input[type="text"] {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid #2a2e38;
+      background: #1e2128;
+      color: #eef0f4;
+    }
+    p.hint {
+      font-size: 11px;
+      color: #8a8f9c;
+      margin-top: 12px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <h1>Счётчик текста</h1>
+  <label class="toggle">
+    <input type="checkbox" id="enabled" />
+    <span>Показывать счётчик над полями</span>
+  </label>
+
+  <div class="field">
+    <label for="profile">Формат / лимит</label>
+    <select id="profile">
+      <option value="general">Общий (без лимита)</option>
+      <option value="title">Заголовок (60)</option>
+      <option value="meta">Мета-описание (155)</option>
+      <option value="tweet">Пост в X (280)</option>
+      <option value="instagram">Instagram-подпись (2200)</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="keyword">Ключевое слово/фраза</label>
+    <input type="text" id="keyword" placeholder="например: купить диван" />
+  </div>
+
+  <p class="hint">Кликни в любое текстовое поле на странице — над ним появится счётчик символов, слов, времени чтения и (если задано) плотности ключевого слова.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

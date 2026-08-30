@@ -1,0 +1,7 @@
+{
+  "name": "@yg/gems",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Самоцветы — бесконечный match-3 с комбо и без ограничения по времени"
+}
