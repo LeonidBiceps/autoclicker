@@ -32,6 +32,7 @@
         <button class="nav-item" data-target="profiles"><span class="nav-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
         <button class="nav-item" data-target="startup"><span class="nav-icon">🚀</span> Автозагрузка</button>
         <button class="nav-item" data-target="ocr"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="record"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
         <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
       </div>
     </nav>
@@ -188,6 +189,40 @@
             </div>
           </div>
         </section>
+
+        <section id="targetWindowSection">
+          <h2>🪟 Привязка к окну <span title="Клики срабатывают только пока активно указанное окно — защита от случайных кликов не туда, если переключился фокус">ⓘ</span></h2>
+          <div class="field">
+            <label for="targetWindowTitle">Заголовок окна (часть текста)</label>
+            <div class="row">
+              <input type="text" id="targetWindowTitle" placeholder="например: Notepad" />
+              <button id="pickActiveWindowBtn" class="secondary-btn">Взять активное окно</button>
+            </div>
+            <p class="hint" id="targetWindowHint">Пусто — кликер работает всегда, независимо от того, какое окно активно.</p>
+          </div>
+        </section>
+
+        <section id="textTriggerSection">
+          <h2>🔤 Дождаться текста <span class="pro-badge" id="textTriggerBadge">Pro</span>
+            <span title="Кликает только когда в выбранной области экрана появляется заданный текст (распознаётся через OCR) — для ожидания конкретного состояния UI, а не только цвета">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Кликать только при совпадении текста</span>
+            <span class="switch">
+              <input type="checkbox" id="textTriggerEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <div class="row">
+              <button id="textTriggerPickBtn" class="secondary-btn">Область проверки</button>
+            </div>
+            <p class="hint" id="textTriggerRegionHint">Область не выбрана.</p>
+          </div>
+          <div class="field">
+            <label for="textTriggerExpected">Ожидаемый текст (часть строки)</label>
+            <input type="text" id="textTriggerExpected" placeholder="например: Готово" />
+          </div>
+        </section>
       </div>
 
       <div class="tab-panel" data-panel="hotkeys" hidden>
@@ -226,9 +261,23 @@
         <section id="scheduleSection">
           <h2>📅 Отложенный старт <span class="pro-badge" id="scheduleBadge">Pro</span></h2>
           <div class="field">
+            <label for="scheduleRepeat">Повтор</label>
+            <select id="scheduleRepeat">
+              <option value="once">Один раз</option>
+              <option value="daily">Каждый день в это время</option>
+              <option value="interval">Каждые N минут</option>
+            </select>
+          </div>
+          <div class="field" id="scheduleTimeField">
             <label for="scheduleTime">Начать в</label>
+            <input type="time" id="scheduleTime" />
+          </div>
+          <div class="field" id="scheduleIntervalField" hidden>
+            <label for="scheduleIntervalMin">Интервал, минут</label>
+            <input type="number" id="scheduleIntervalMin" min="1" step="1" />
+          </div>
+          <div class="field">
             <div class="row">
-              <input type="time" id="scheduleTime" />
               <button id="scheduleSetBtn" class="secondary-btn">Запланировать</button>
               <button id="scheduleCancelBtn" class="secondary-btn">Отмена</button>
             </div>
@@ -252,6 +301,13 @@
           </div>
           <div class="field">
             <div class="macro-list" id="macroList"></div>
+          </div>
+          <div class="field">
+            <div class="row">
+              <button id="macroChainPlayBtn" class="secondary-btn">▶ Играть отмеченные по порядку</button>
+            </div>
+            <p class="hint">Отметь галочками нужные макросы слева от названия — сыграют один за
+              другим в том порядке, в котором стоят в списке.</p>
           </div>
         </section>
       </div>
@@ -362,6 +418,27 @@
         </section>
       </div>
 
+      <div class="tab-panel" data-panel="record" hidden>
+        <h1>🎥 Запись экрана</h1>
+        <section id="recordSection">
+          <h2>🎥 Запись экрана <span class="pro-badge" id="recordBadge">Pro</span>
+            <span title="Записывает основной экран целиком в файл .mp4 — не буфер повторов последних N секунд, а обычная запись старт/стоп. Не плавное видео, а таймлапс: кадры идут с реальным темпом захвата (обычно единицы fps)">ⓘ</span></h2>
+          <p class="hint">Записывает основной экран целиком, пока не нажмёшь «Остановить», в формате
+            .mp4 — таймлапс из кадров, а не плавное видео (обычно 2-4 кадра в секунду). Файл
+            сохраняется в папке данных приложения — открыть её можно кнопкой ниже.</p>
+          <div class="field">
+            <div class="row">
+              <button id="recordStartBtn" class="secondary-btn">Начать запись</button>
+              <button id="recordStopBtn" class="secondary-btn" disabled>Остановить</button>
+            </div>
+            <p class="hint" id="recordScreenStatus"></p>
+          </div>
+          <div class="field">
+            <button id="recordOpenFolderBtn" class="secondary-btn">Открыть папку с записями</button>
+          </div>
+        </section>
+      </div>
+
       <div class="tab-panel" data-panel="system" hidden>
         <h1>⚙ Настройки</h1>
         <section>
@@ -380,6 +457,21 @@
               <span class="switch-slider"></span>
             </span>
           </label>
+        </section>
+
+        <section>
+          <h2>🖱 Анти-АФК <span title="Периодически двигает мышь на 1px и обратно — не даёт сработать статусу «отошёл» или блокировке экрана">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Не давать уйти в АФК</span>
+            <span class="switch">
+              <input type="checkbox" id="antiAfkEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <label for="antiAfkIntervalSec">Интервал, сек</label>
+            <input type="number" id="antiAfkIntervalSec" min="5" step="5" />
+          </div>
         </section>
       </div>
 

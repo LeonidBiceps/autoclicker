@@ -25,6 +25,12 @@ const DEFAULT_SETTINGS = {
   launchOnStartup: false,
   launchMinimized: false,
   ocrLang: "rus+eng", // 'rus' | 'eng' | 'rus+eng' — распознавание текста со скриншота (Pro)
+  antiAfkEnabled: false, // двигает мышь на 1px и обратно по таймеру — не даёт уйти в АФК/заблокировать экран
+  antiAfkIntervalSec: 45,
+  targetWindowTitle: "", // пусто = кликер работает всегда; иначе — только когда активно окно с таким заголовком (подстрока)
+  scheduleRepeat: "once", // 'once' | 'daily' | 'interval' — во сколько раз повторять отложенный старт (Pro)
+  scheduleIntervalMin: 30,
+  textTrigger: { enabled: false, region: null, expectedText: "", lang: "rus+eng" }, // Pro: клик только когда в области экрана появляется заданный текст (OCR)
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).
@@ -41,6 +47,8 @@ const PROFILE_FIELDS = [
   "mode",
   "fixedPoint",
   "sequencePoints",
+  "targetWindowTitle",
+  "textTrigger",
 ];
 
 class Store {

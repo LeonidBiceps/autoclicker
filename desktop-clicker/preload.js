@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("api", {
   setSettings: (partial) => ipcRenderer.invoke("settings:set", partial),
   verifyLicense: (key) => ipcRenderer.invoke("license:verify", key),
   getMachineId: () => ipcRenderer.invoke("system:getMachineId"),
+  pickActiveWindowTitle: () => ipcRenderer.invoke("system:pickActiveWindowTitle"),
   toggle: () => ipcRenderer.invoke("click:toggle"),
   getStatus: () => ipcRenderer.invoke("click:status"),
   pickPoint: () => ipcRenderer.invoke("point:pick"),
@@ -12,7 +13,7 @@ contextBridge.exposeInMainWorld("api", {
   captureKey: () => ipcRenderer.invoke("key:capture"),
   openDonate: () => ipcRenderer.invoke("donate:open"),
 
-  setSchedule: (hhmm) => ipcRenderer.invoke("schedule:set", hhmm),
+  setSchedule: (hhmm, repeat, intervalMin) => ipcRenderer.invoke("schedule:set", hhmm, repeat, intervalMin),
   cancelSchedule: () => ipcRenderer.invoke("schedule:cancel"),
 
   startRecording: () => ipcRenderer.invoke("macro:startRecording"),
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld("api", {
   playMacro: (name) => ipcRenderer.invoke("macro:play", name),
   deleteMacro: (name) => ipcRenderer.invoke("macro:delete", name),
   updateMacro: (oldName, newName, repeat) => ipcRenderer.invoke("macro:update", oldName, newName, repeat),
+  playMacroChain: (names) => ipcRenderer.invoke("macro:playChain", names),
 
   exportSettings: () => ipcRenderer.invoke("settings:export"),
   importSettings: () => ipcRenderer.invoke("settings:import"),
@@ -30,6 +32,11 @@ contextBridge.exposeInMainWorld("api", {
 
   captureAndRecognizeText: () => ipcRenderer.invoke("ocr:capture"),
   copyText: (text) => clipboard.writeText(text),
+  pickTextTriggerRegion: () => ipcRenderer.invoke("textTrigger:pickRegion"),
+
+  startRecordingScreen: () => ipcRenderer.invoke("record:start"),
+  stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
+  openRecordingsFolder: () => ipcRenderer.invoke("record:openFolder"),
 
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),

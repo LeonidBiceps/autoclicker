@@ -540,6 +540,18 @@ button:disabled {
   font-size: 12px;
 }
 
+.macro-chain-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.macro-chain-check input {
+  flex-shrink: 0;
+}
+
 #startupList .macro-item span {
   overflow: hidden;
   text-overflow: ellipsis;

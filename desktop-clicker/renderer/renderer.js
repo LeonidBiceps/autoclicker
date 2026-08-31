@@ -154,6 +154,9 @@ function updateProUI() {
   document.getElementById("colorTriggerBadge").hidden = proUnlocked;
   document.getElementById("ocrBadge").hidden = proUnlocked;
   document.getElementById("ocrTabBadge").hidden = proUnlocked;
+  document.getElementById("textTriggerBadge").hidden = proUnlocked;
+  document.getElementById("recordBadge").hidden = proUnlocked;
+  document.getElementById("recordTabBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -177,12 +180,19 @@ function updateProUI() {
     "colorTolerance",
     "ocrCaptureBtn",
     "ocrLang",
+    "textTriggerEnabled",
+    "textTriggerPickBtn",
+    "textTriggerExpected",
+    "scheduleRepeat",
+    "scheduleIntervalMin",
+    "recordStartBtn",
+    "recordOpenFolderBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
   const proStatus = document.getElementById("proStatus");
   proStatus.textContent = proUnlocked
-    ? "Pro активирован — без лимита кликов, разброс позиции, триггер по цвету, последовательность точек, макросы, бинды, профили, расписание."
+    ? "Pro активирован — без лимита кликов, разброс позиции, триггер по цвету, дождаться текста, последовательность точек, макросы, бинды, профили, расписание, текст с экрана, запись экрана."
     : "Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.";
 }
 
@@ -233,8 +243,43 @@ function loadIntoForm() {
   document.getElementById("colorTolerance").value = tolerance;
   renderColorTrigger();
 
+  document.getElementById("targetWindowTitle").value = settings.targetWindowTitle || "";
+  updateTargetWindowHint();
+
+  renderTextTrigger();
+
+  document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
+  document.getElementById("antiAfkIntervalSec").value = settings.antiAfkIntervalSec || 45;
+
+  document.getElementById("scheduleRepeat").value = settings.scheduleRepeat || "once";
+  document.getElementById("scheduleIntervalMin").value = settings.scheduleIntervalMin || 30;
+  updateScheduleFieldsVisibility();
+
   updateActionVisibility();
   updateModeVisibility();
+}
+
+function updateTargetWindowHint() {
+  const title = (settings.targetWindowTitle || "").trim();
+  document.getElementById("targetWindowHint").textContent = title
+    ? `Клики работают только пока активно окно с заголовком, содержащим «${title}».`
+    : "Пусто — кликер работает всегда, независимо от того, какое окно активно.";
+}
+
+function renderTextTrigger() {
+  const trigger = settings.textTrigger || {};
+  document.getElementById("textTriggerEnabled").checked = !!trigger.enabled;
+  document.getElementById("textTriggerExpected").value = trigger.expectedText || "";
+  const hint = document.getElementById("textTriggerRegionHint");
+  hint.textContent = trigger.region
+    ? `Область: ${trigger.region.width}×${trigger.region.height} в точке ${trigger.region.x}, ${trigger.region.y}`
+    : "Область не выбрана.";
+}
+
+function updateScheduleFieldsVisibility() {
+  const mode = document.getElementById("scheduleRepeat").value;
+  document.getElementById("scheduleTimeField").hidden = mode === "interval";
+  document.getElementById("scheduleIntervalField").hidden = mode !== "interval";
 }
 
 // --- Sequence points ---
@@ -299,7 +344,10 @@ function renderMacroList() {
       const { events, repeat } = normalizeMacroClient(settings.macros[n]);
       const repeatSuffix = repeat > 1 ? ` × ${repeat}` : "";
       return `<div class="macro-item">
-        <span>${escapeHtml(n)} (${describeMacroEvents(events)}${repeatSuffix})</span>
+        <label class="macro-chain-check">
+          <input type="checkbox" class="macro-chain-checkbox" data-name="${escapeHtml(n)}" />
+          <span>${escapeHtml(n)} (${describeMacroEvents(events)}${repeatSuffix})</span>
+        </label>
         <div class="item-actions">
           <button class="play-btn" data-name="${escapeHtml(n)}">▶ Играть</button>
           <button class="edit-btn" data-name="${escapeHtml(n)}">✎</button>
@@ -560,6 +608,57 @@ function bindHandlers() {
     }
   });
 
+  // Привязка к окну
+  document.getElementById("targetWindowTitle").addEventListener("change", async (e) => {
+    await save({ targetWindowTitle: e.target.value.trim() });
+    updateTargetWindowHint();
+  });
+  document.getElementById("pickActiveWindowBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("pickActiveWindowBtn");
+    const hint = document.getElementById("targetWindowHint");
+    btn.disabled = true;
+    hint.textContent = "Переключись на нужное окно (Alt+Tab) — берём заголовок через 3 секунды…";
+    const title = await window.api.pickActiveWindowTitle();
+    btn.disabled = false;
+    if (title) {
+      document.getElementById("targetWindowTitle").value = title;
+      await save({ targetWindowTitle: title });
+    }
+    updateTargetWindowHint();
+  });
+
+  // "Дождаться текста"
+  document.getElementById("textTriggerEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ textTrigger: { ...settings.textTrigger, enabled: e.target.checked } });
+  });
+  document.getElementById("textTriggerPickBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickTextTriggerRegion();
+    if (result.ok) {
+      await save({ textTrigger: { ...settings.textTrigger, region: result.region } });
+      renderTextTrigger();
+    }
+  });
+  document.getElementById("textTriggerExpected").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ textTrigger: { ...settings.textTrigger, expectedText: e.target.value } });
+  });
+
+  // Анти-АФК
+  document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
+    await save({ antiAfkEnabled: e.target.checked });
+  });
+  document.getElementById("antiAfkIntervalSec").addEventListener("change", async (e) => {
+    await save({ antiAfkIntervalSec: Math.max(5, parseInt(e.target.value, 10) || 45) });
+  });
+
+  // Расписание с повтором
+  document.getElementById("scheduleRepeat").addEventListener("change", () => updateScheduleFieldsVisibility());
+  document.getElementById("scheduleIntervalMin").addEventListener("change", async (e) => {
+    await save({ scheduleIntervalMin: Math.max(1, parseInt(e.target.value, 10) || 30) });
+  });
+
   document.getElementById("seqAddBtn").addEventListener("click", async () => {
     const point = await window.api.pickPoint();
     if (point) {
@@ -656,13 +755,19 @@ function bindHandlers() {
   // Расписание
   document.getElementById("scheduleSetBtn").addEventListener("click", async () => {
     if (!proUnlocked) return;
+    const repeat = document.getElementById("scheduleRepeat").value;
     const time = document.getElementById("scheduleTime").value;
-    if (!time) return;
-    const result = await window.api.setSchedule(time);
+    const intervalMin = Math.max(1, parseInt(document.getElementById("scheduleIntervalMin").value, 10) || 30);
+    if (repeat !== "interval" && !time) return;
+    const result = await window.api.setSchedule(time, repeat, intervalMin);
     const status = document.getElementById("scheduleStatus");
-    status.textContent = result.scheduledAt
-      ? `Запланировано на ${new Date(result.scheduledAt).toLocaleString("ru-RU")}`
-      : "";
+    if (!result.scheduledAt) {
+      status.textContent = "";
+      return;
+    }
+    const when = new Date(result.scheduledAt).toLocaleString("ru-RU");
+    const suffix = repeat === "daily" ? " (повтор каждый день)" : repeat === "interval" ? ` (повтор каждые ${intervalMin} мин)` : "";
+    status.textContent = `Запланировано на ${when}${suffix}`;
   });
   document.getElementById("scheduleCancelBtn").addEventListener("click", async () => {
     await window.api.cancelSchedule();
@@ -797,6 +902,19 @@ function bindHandlers() {
     status.textContent = "Скопировано в буфер обмена.";
   });
 
+  // Цепочка макросов
+  document.getElementById("macroChainPlayBtn").addEventListener("click", () => {
+    if (!proUnlocked) return;
+    const names = Array.from(document.querySelectorAll(".macro-chain-checkbox:checked")).map((el) => el.dataset.name);
+    if (names.length === 0) return;
+    window.api.playMacroChain(names);
+  });
+
+  // Запись экрана
+  document.getElementById("recordStartBtn").addEventListener("click", () => startScreenRecording());
+  document.getElementById("recordStopBtn").addEventListener("click", () => stopScreenRecording());
+  document.getElementById("recordOpenFolderBtn").addEventListener("click", () => window.api.openRecordingsFolder());
+
   window.api.onStatus((status) => renderStatus(status));
   window.api.onNote((text) => {
     const note = document.getElementById("note");
@@ -811,6 +929,36 @@ function bindHandlers() {
       status.textContent = `Идёт запись… ${count} событий. Кликай и/или печатай, потом жми «Остановить» или ${settings.recordHotkey}.`;
     }
   });
+}
+
+// --- Запись экрана (Pro) ---
+// Захват кадров и кодирование в ffmpeg целиком в main-процессе (main.js) — рендереру остаётся
+// только старт/стоп по IPC и отображение результата. Не плавное видео, а последовательность
+// кадров с реальным темпом захвата (обычно единицы fps) — таймлапс, а не видеозапись в привычном
+// смысле; см. README про то, почему не через desktopCapturer/MediaRecorder.
+
+async function startScreenRecording() {
+  if (!proUnlocked) return;
+  const status = document.getElementById("recordScreenStatus");
+  const result = await window.api.startRecordingScreen();
+  if (!result.ok) {
+    status.textContent = `Не удалось начать запись: ${result.error}`;
+    return;
+  }
+  document.getElementById("recordStartBtn").disabled = true;
+  document.getElementById("recordStopBtn").disabled = false;
+  status.textContent = "Идёт запись…";
+}
+
+async function stopScreenRecording() {
+  const status = document.getElementById("recordScreenStatus");
+  status.textContent = "Собираем видео из кадров…";
+  document.getElementById("recordStopBtn").disabled = true;
+  const result = await window.api.stopRecordingScreen();
+  document.getElementById("recordStartBtn").disabled = !proUnlocked;
+  status.textContent = result.ok
+    ? `Сохранено: ${result.path} (${result.frames} кадров, ~${result.fps} fps)`
+    : `Не удалось сохранить: ${result.error}`;
 }
 
 async function init() {

@@ -24,7 +24,7 @@ const os = require("os");
 const { execFile } = require("child_process");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
-const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType } = require("@nut-tree-fork/nut-js");
+const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow } = require("@nut-tree-fork/nut-js");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
 const Tesseract = require("tesseract.js");
@@ -47,6 +47,7 @@ let sessionStartedAt = 0;
 let sequenceIndex = 0;
 let scheduledTimerId = null;
 let scheduledAt = null;
+let scheduledHhmm = null;
 let recording = false;
 let recordedEvents = [];
 let recordStartTime = 0;
@@ -139,6 +140,64 @@ async function colorConditionMet(settings) {
   }
 }
 
+// --- Привязка к окну (клик срабатывает только пока активно нужное окно) ---
+
+async function windowFocusConditionMet(settings) {
+  const title = (settings.targetWindowTitle || "").trim();
+  if (!title) return true;
+  try {
+    const active = await getActiveWindow();
+    const activeTitle = await active.title;
+    return activeTitle.toLowerCase().includes(title.toLowerCase());
+  } catch (e) {
+    return true; // не блокируем клики, если не удалось прочитать активное окно
+  }
+}
+
+// --- "Дождаться текста" — клик только когда в заданной области экрана появился нужный текст (Pro) ---
+//
+// OCR — тяжёлая операция (доли секунды), гонять его на каждый тик клика (может быть каждые 50мс)
+// нельзя — поэтому опрашиваем область РЕЖЕ, в отдельном таймере, и кэшируем последний результат.
+// Сам клик каждый раз просто читает кэш (мгновенно), а не ждёт OCR.
+
+let textTriggerLastMatch = true;
+let textTriggerPolling = false;
+let textTriggerTimer = null;
+
+async function pollTextTrigger(trigger) {
+  if (textTriggerPolling) return;
+  textTriggerPolling = true;
+  try {
+    const result = await runOcr(trigger.region, trigger.lang || "rus+eng");
+    if (result.ok) {
+      const text = (result.text || "").toLowerCase();
+      textTriggerLastMatch = text.includes((trigger.expectedText || "").toLowerCase());
+    }
+    // при неудачном OCR намеренно не трогаем textTriggerLastMatch — единичный сбой не должен
+    // мгновенно перекрыть клики, которые до этого честно шли
+  } finally {
+    textTriggerPolling = false;
+  }
+}
+
+function startTextTriggerPolling(trigger) {
+  stopTextTriggerPolling();
+  textTriggerLastMatch = false; // до первого успешного опроса — считаем, что текста ещё нет
+  pollTextTrigger(trigger);
+  textTriggerTimer = setInterval(() => pollTextTrigger(trigger), 1500);
+}
+
+function stopTextTriggerPolling() {
+  if (textTriggerTimer) clearInterval(textTriggerTimer);
+  textTriggerTimer = null;
+}
+
+function textConditionMet(settings) {
+  const trigger = settings.textTrigger;
+  if (!proUnlocked || !trigger || !trigger.enabled || !trigger.region || !trigger.expectedText) return true;
+  return textTriggerLastMatch;
+}
+
 function checkAutoStop(settings) {
   if (!proUnlocked && sessionClicks >= FREE_SESSION_CLICK_CAP) {
     stopClicking(`Бесплатная версия: лимит ${FREE_SESSION_CLICK_CAP} кликов за запуск. Pro снимает ограничение.`);
@@ -163,7 +222,9 @@ function scheduleNext() {
 
   timerId = setTimeout(async () => {
     try {
-      if (await colorConditionMet(settings)) {
+      const canClick =
+        (await windowFocusConditionMet(settings)) && (await colorConditionMet(settings)) && textConditionMet(settings);
+      if (canClick) {
         await performClick();
         sessionClicks++;
         updateHud(`● ${sessionClicks} кликов`);
@@ -195,12 +256,16 @@ function startClicking() {
   sendStatus();
   createHud();
   updateHud("● 0 кликов");
+  if (proUnlocked && settings.textTrigger && settings.textTrigger.enabled && settings.textTrigger.region) {
+    startTextTriggerPolling(settings.textTrigger);
+  }
   scheduleNext();
 }
 
 function stopClicking(note) {
   running = false;
   clearTimeout(timerId);
+  stopTextTriggerPolling();
   sendStatus();
   destroyHud();
   if (note) sendNote(note);
@@ -551,6 +616,36 @@ async function playMacro(events, repeat = 1) {
   }
 }
 
+// --- Анти-АФК (двигает мышь туда-сюда по таймеру, чтобы не срабатывал статус "отошёл" / блокировка экрана) ---
+//
+// Независим от автокликера — свой собственный таймер, свой собственный флаг. Двигаем на 1px и
+// сразу обратно (а не в случайную сторону) — реальный курсор не съезжает никуда, только сам факт
+// движения обновляет системный таймер бездействия.
+
+let antiAfkTimer = null;
+
+async function antiAfkTick() {
+  try {
+    const pos = await mouse.getPosition();
+    await mouse.setPosition(new Point(pos.x + 1, pos.y));
+    await mouse.setPosition(new Point(pos.x, pos.y));
+  } catch (e) {
+    // молча пропускаем один тик — например, если экран заблокирован и координаты недоступны
+  }
+  const sec = Math.max(5, store.get("antiAfkIntervalSec") || 45);
+  antiAfkTimer = setTimeout(antiAfkTick, sec * 1000);
+}
+
+function startAntiAfk() {
+  if (antiAfkTimer) return;
+  antiAfkTick();
+}
+
+function stopAntiAfk() {
+  if (antiAfkTimer) clearTimeout(antiAfkTimer);
+  antiAfkTimer = null;
+}
+
 // --- Startup apps manager (включить/выключить чужие программы в автозагрузке) ---
 //
 // Два источника, оба не требуют прав администратора (в отличие от HKLM\...\Run или общей папки
@@ -800,6 +895,10 @@ ipcMain.handle("settings:set", (event, partial) => {
   if ("mode" in partial || "sequencePoints" in partial) {
     refreshSeqMarkers();
   }
+  if ("antiAfkEnabled" in partial) {
+    if (partial.antiAfkEnabled) startAntiAfk();
+    else stopAntiAfk();
+  }
   return store.getAll();
 });
 
@@ -810,6 +909,19 @@ ipcMain.handle("license:verify", async (event, key) => {
 });
 
 ipcMain.handle("system:getMachineId", () => getMachineId());
+
+// Пауза перед считыванием заголовка: если сделать это сразу, "активным окном" всегда будет само
+// МультиТул (пользователь только что кликнул кнопку в нём) — даём 3 секунды переключиться на
+// реальное целевое окно (Alt+Tab и т.п.), окно МультиТула при этом можно свернуть или нет.
+ipcMain.handle("system:pickActiveWindowTitle", async () => {
+  await sleep(3000);
+  try {
+    const active = await getActiveWindow();
+    return await active.title;
+  } catch (e) {
+    return "";
+  }
+});
 
 ipcMain.handle("click:toggle", () => toggleClicking());
 ipcMain.handle("click:status", () => ({ running, clickCount: sessionClicks }));
@@ -831,27 +943,48 @@ ipcMain.handle("donate:open", () => {
   return { ok: true };
 });
 
-ipcMain.handle("schedule:set", (event, hhmm) => {
-  if (!proUnlocked) return { scheduledAt: null, error: "pro-required" };
-  if (scheduledTimerId) {
-    clearTimeout(scheduledTimerId);
-    scheduledTimerId = null;
+// Отложенный старт: разово ("once"), каждый день в это же время ("daily"), или каждые N минут
+// ("interval", hhmm не участвует). daily/interval сами себя перезаводят после каждого срабатывания —
+// работают, пока не нажать "Отменить" явно.
+function computeNextScheduleTarget(hhmm, repeat, intervalMin) {
+  if (repeat === "interval") {
+    return Date.now() + Math.max(1, intervalMin || 30) * 60 * 1000;
   }
-  if (!hhmm) {
-    scheduledAt = null;
-    return { scheduledAt: null };
-  }
-  const [h, m] = hhmm.split(":").map(Number);
+  const [h, m] = (hhmm || "00:00").split(":").map(Number);
   const target = new Date();
   target.setHours(h, m, 0, 0);
   if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
-  scheduledAt = target.getTime();
+  return target.getTime();
+}
+
+function armSchedule(hhmm, repeat, intervalMin) {
+  if (scheduledTimerId) clearTimeout(scheduledTimerId);
+  scheduledHhmm = hhmm;
+  scheduledAt = computeNextScheduleTarget(hhmm, repeat, intervalMin);
   scheduledTimerId = setTimeout(() => {
+    startClicking();
+    if (repeat === "once") {
+      scheduledTimerId = null;
+      scheduledAt = null;
+    } else {
+      armSchedule(hhmm, repeat, intervalMin);
+    }
+    sendStatus();
+  }, scheduledAt - Date.now());
+}
+
+ipcMain.handle("schedule:set", (event, hhmm, repeat, intervalMin) => {
+  if (!proUnlocked) return { scheduledAt: null, error: "pro-required" };
+  const mode = repeat || "once";
+  if (mode !== "interval" && !hhmm) {
+    if (scheduledTimerId) clearTimeout(scheduledTimerId);
     scheduledTimerId = null;
     scheduledAt = null;
-    startClicking();
-  }, scheduledAt - Date.now());
-  return { scheduledAt };
+    return { scheduledAt: null };
+  }
+  store.set({ scheduleRepeat: mode, scheduleIntervalMin: intervalMin || store.get("scheduleIntervalMin") || 30 });
+  armSchedule(hhmm, mode, intervalMin || store.get("scheduleIntervalMin") || 30);
+  return { scheduledAt, scheduleRepeat: mode };
 });
 
 ipcMain.handle("schedule:cancel", () => {
@@ -860,6 +993,7 @@ ipcMain.handle("schedule:cancel", () => {
     scheduledTimerId = null;
   }
   scheduledAt = null;
+  scheduledHhmm = null;
   return { scheduledAt: null };
 });
 
@@ -887,6 +1021,23 @@ ipcMain.handle("macro:play", async (event, name) => {
   if (!raw) return { ok: false };
   const { events, repeat } = normalizeMacro(raw);
   playMacro(events, repeat);
+  return { ok: true };
+});
+
+// Цепочка макросов: несколько выбранных играются один за другим, в указанном порядке. Каждый —
+// со своим сохранённым числом повторов. Не блокирует IPC на всё время цепочки (аналогично одиночному
+// macro:play) — воспроизведение идёт в фоне, ответ уходит сразу.
+ipcMain.handle("macro:playChain", (event, names) => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const macros = store.get("macros") || {};
+  (async () => {
+    for (const name of names || []) {
+      const raw = macros[name];
+      if (!raw) continue;
+      const { events, repeat } = normalizeMacro(raw);
+      await playMacro(events, repeat);
+    }
+  })();
   return { ok: true };
 });
 
@@ -919,6 +1070,131 @@ ipcMain.handle("ocr:capture", async () => {
   if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
   const lang = store.get("ocrLang") || "rus+eng";
   return runOcr(region, lang);
+});
+
+// Выбор области для триггера "дождаться текста" — та же рамка выделения, что и у OCR-вкладки,
+// но результат не распознаётся сразу, а сохраняется как регион для последующего опроса при клике.
+ipcMain.handle("textTrigger:pickRegion", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  return { ok: true, region };
+});
+
+// --- Запись экрана (Pro) ---
+//
+// Первая версия делала это через desktopCapturer + MediaRecorder (стандартный веб-путь) — но в
+// одном из тестовых окружений (похоже, виртуальная машина/RDP без полноценной поддержки
+// Desktop Duplication API у Chromium) это намертво вешало процесс рендерера прямо во время
+// захвата, без какой-либо ошибки, которую можно было бы поймать в JS. Вместо этого — свой пайплайн
+// на уже проверенных вживую компонентах: кадры снимаются по одному через nut-js screen.captureRegion()
+// (тот же механизм, что и OCR/цвет-триггер — обычный BitBlt, не GPU-путь Chromium), а по
+// остановке собираются в .mp4 через ffmpeg (пакет ffmpeg-static — бинарник ffmpeg внутри npm-
+// зависимости, ничего ставить пользователю не нужно). Плата за надёжность — это не плавное видео
+// с фиксированным FPS, а последовательность кадров с реальным темпом захвата (обычно единицы fps,
+// не 30-60) — по сути таймлапс, а не видеозапись в привычном смысле.
+
+// require("ffmpeg-static") возвращает путь ВНУТРИ app.asar — реальный бинарник туда не попадает
+// (asarUnpack в package.json кладёт его в app.asar.unpacked), а спавнить процесс из архива
+// напрямую нельзя (это виртуальная ФС, понятная только патченому fs/require у Electron, не
+// настоящему CreateProcess у Windows). В dev-режиме "app.asar" в пути просто не встречается,
+// .replace() безопасно ничего не делает.
+const ffmpegPath = require("ffmpeg-static").replace("app.asar", "app.asar.unpacked");
+
+let recordingFrames = false;
+let recordFrameDir = null;
+let recordFrameCount = 0;
+let recordStartedAt = 0;
+const RECORD_TARGET_FPS = 4; // полноэкранный кадр — тяжёлая операция, не гонимся за высоким fps
+const RECORD_FRAME_INTERVAL_MS = 1000 / RECORD_TARGET_FPS;
+
+async function recordingLoop() {
+  const width = await nutScreen.width();
+  const height = await nutScreen.height();
+  while (recordingFrames) {
+    const frameStart = Date.now();
+    const frameBase = `frame-${String(recordFrameCount + 1).padStart(6, "0")}`;
+    try {
+      // Тайм-аут на отдельный кадр: если снимок всего экрана (в разы тяжелее маленькой области,
+      // которую захватывают OCR/цвет-триггер) вдруг подвиснет на уровне нативного вызова —
+      // проверено вживую, такое бывает — цикл всё равно должен продолжиться и рано или поздно
+      // увидеть recordingFrames=false, а не встать намертво в ожидании одного кадра навсегда.
+      await Promise.race([
+        nutScreen.captureRegion(frameBase, new Region(0, 0, width, height), FileType.JPG, recordFrameDir),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("frame capture timeout")), 3000)),
+      ]);
+      recordFrameCount++;
+    } catch (e) {
+      // пропускаем неудавшийся/зависший кадр, не прерывая всю запись
+    }
+    // Обязательная пауза каждую итерацию (не только когда захват уложился в бюджет) — иначе при
+    // медленном захвате (весь экран — не маленькая область, как у OCR/цвет-триггера) цикл ни разу
+    // не отдаёт управление event loop'у между кадрами, и IPC-сообщение "остановить запись" физически
+    // не может быть обработано, пока не закончится вся запись. Проверено вживую: без этого минимума
+    // процесс реально "зависал" (растущий CPU, Responding=False) на неопределённое время.
+    const wait = Math.max(10, RECORD_FRAME_INTERVAL_MS - (Date.now() - frameStart));
+    await sleep(wait);
+  }
+}
+
+ipcMain.handle("record:start", (event) => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  if (recordingFrames) return { ok: false, error: "already-recording" };
+  recordingFrames = true;
+  recordFrameCount = 0;
+  recordStartedAt = Date.now();
+  recordFrameDir = fs.mkdtempSync(path.join(os.tmpdir(), "multitool-rec-"));
+  recordingLoop();
+  return { ok: true };
+});
+
+ipcMain.handle("record:stop", async () => {
+  if (!recordingFrames) return { ok: false, error: "not-recording" };
+  recordingFrames = false;
+  await sleep(RECORD_FRAME_INTERVAL_MS + 100); // дать текущему кадру дозахватиться перед кодированием
+
+  const elapsedSec = Math.max(0.1, (Date.now() - recordStartedAt) / 1000);
+  const fps = recordFrameCount > 0 ? Math.max(1, Math.round((recordFrameCount / elapsedSec) * 100) / 100) : RECORD_TARGET_FPS;
+  const frameDir = recordFrameDir;
+  const frameCount = recordFrameCount;
+
+  if (frameCount === 0) {
+    fs.rm(frameDir, { recursive: true, force: true }, () => {});
+    return { ok: false, error: "Не записано ни одного кадра" };
+  }
+
+  // Важно: сохраняем НЕ в папку "Видео" — если у пользователя включён "Controlled folder access"
+  // в Защитнике Windows (реальная, часто включённая по умолчанию функция — проверено вживую именно
+  // на этом баге), запись туда от малоизвестного .exe молча блокируется ("No such file or
+  // directory", хотя сама папка существует и доступна). Причём это специфично именно для процесса
+  // Electron — та же операция из чистого node.exe на этой же машине отрабатывала мгновенно, то
+  // есть дело не в самом файле/пути, а в том, как антивирус относится конкретно к этому процессу.
+  // Простое и надёжное решение — писать в папку данных приложения (userData), которая никогда не
+  // входит в список защищённых системных папок: там и так уже спокойно живут settings.json и кеш
+  // OCR весь этот сеанс, без единой заминки.
+  const recordingsDir = path.join(app.getPath("userData"), "recordings");
+  fs.mkdirSync(recordingsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outFile = path.join(recordingsDir, `clip-${stamp}.mp4`);
+  const framePattern = path.join(frameDir, "frame-%06d.jpg");
+
+  return new Promise((resolve) => {
+    execFile(
+      ffmpegPath,
+      ["-y", "-framerate", String(fps), "-i", framePattern, "-c:v", "libx264", "-pix_fmt", "yuv420p", outFile],
+      (err) => {
+        fs.rm(frameDir, { recursive: true, force: true }, () => {});
+        if (err) resolve({ ok: false, error: err.message });
+        else resolve({ ok: true, path: outFile, frames: frameCount, fps });
+      }
+    );
+  });
+});
+
+ipcMain.handle("record:openFolder", () => {
+  const dir = path.join(app.getPath("userData"), "recordings"); // та же папка, что и при сохранении записи
+  fs.mkdirSync(dir, { recursive: true });
+  shell.openPath(dir);
 });
 
 ipcMain.handle("settings:export", async () => {
@@ -982,6 +1258,7 @@ app.whenReady().then(async () => {
   createTray();
   registerShortcuts();
   refreshSeqMarkers();
+  if (store.get("antiAfkEnabled")) startAntiAfk();
 });
 
 app.on("window-all-closed", () => {
