@@ -6,7 +6,7 @@
 записи реальных кликов (макросы).
 
 **Готовый `.exe` для раздачи пользователям (без сборки):**
-[MultiTool-2.1.1.exe](https://github.com/LeonidBiceps/autoclicker/releases/download/v2.1.1/MultiTool-2.1.1.exe)
+[MultiTool-2.1.2.exe](https://github.com/LeonidBiceps/autoclicker/releases/download/v2.1.2/MultiTool-2.1.2.exe)
 — именно на эту ссылку указывает кнопка «Скачать МультиТул» в браузерном расширении
 (`DESKTOP_APP_URL` в `extensions/clicker/options.js`). При новом релизе — залить новый `.exe` через
 `gh release create vX.Y.Z ...` и обновить эту ссылку в двух местах: тут и в `options.js`.

@@ -1,6 +1,6 @@
 {
   "name": "autoclicker-desktop",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "private": true,
   "description": "МультиТул — автоматизация под Windows: автокликер, макросы, бинды, триггер по цвету. Работает в любом окне/игре.",
   "main": "main.js",
