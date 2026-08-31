@@ -143,6 +143,87 @@ function initSearchValueBadges() {
   }, 500);
 }
 
+// --- Сигнал "маломерит/большемерит" на странице отзывов WB (/catalog/ID/feedbacks) ---
+//
+// Проверено вживую: у WB нет структурированной агрегированной сводки по размеру — вкладка-фильтр
+// "Посадка" в шапке отзывов просто СУЖАЕТ список отзывов до тех, что упомянули посадку, а не
+// показывает готовую статистику (проверено: клик по ней уменьшил список с 7 отзывов до 2, без
+// какого-либо процентного индикатора). Отдельного API-запроса за текстом отзывов тоже нет — весь
+// текст уже отрисован в DOM силами самого сайта (гидратация происходит до захода content-script),
+// поэтому просто читаем видимые карточки отзывов и считаем явные упоминания размера в тексте.
+// Контейнер `.product-feedbacks__main-wrapper` и внутренний BEM-класс `product-feedbacks__main` —
+// стабильные (без хэш-суффикса), а вот класс самой карточки отзыва (`item--xxxxx`) — хэшированный
+// CSS-модуль и может смениться при следующем деплое WB, поэтому карточки ищем не по классу, а
+// структурно: верхнеуровневые <li> внутри контейнера (без предка-li внутри него же).
+function isWbFeedbacksPage() {
+  return /(^|\.)wildberries\.ru$/.test(location.hostname) && /\/catalog\/\d+\/feedbacks/.test(location.pathname);
+}
+
+const FIT_SMALL_RE = /маломер|жмёт|жмет|тесновато|тесно(?![а-яё])|маловат/iu;
+const FIT_LARGE_RE = /большемер|великоват|свободновато|просторновато|болтает(?:ся)?\s*на\s*ноге/iu;
+
+function getFeedbackCards() {
+  const container = document.querySelector(".product-feedbacks__main-wrapper");
+  if (!container) return [];
+  const allLis = Array.from(container.querySelectorAll("li"));
+  return allLis.filter((li) => li.className && li.textContent.trim().length > 20 && !li.parentElement.closest("li"));
+}
+
+function ensureFitSummaryEl(container) {
+  let el = container.querySelector(":scope > .pt-fit-summary");
+  if (el) return el;
+  el = document.createElement("div");
+  el.className = "pt-fit-summary";
+  container.insertBefore(el, container.firstChild);
+  return el;
+}
+
+function scanFeedbacksForFitSignal() {
+  const container = document.querySelector(".product-feedbacks__main-wrapper");
+  if (!container) return;
+
+  const cards = getFeedbackCards();
+  let small = 0;
+  let large = 0;
+  for (const card of cards) {
+    const text = card.textContent;
+    if (FIT_SMALL_RE.test(text)) small++;
+    if (FIT_LARGE_RE.test(text)) large++;
+  }
+
+  if (small === 0 && large === 0) return;
+
+  const el = ensureFitSummaryEl(container);
+  el.innerHTML = `
+    <div class="pt-fit-title">Размер по отзывам (эвристика по тексту, не официальная статистика WB)</div>
+    <div class="pt-fit-rows">
+      ${small > 0 ? `<div class="pt-fit-row">🔺 ${small} ${small === 1 ? "отзыв пишет" : "отзыва(ов) пишут"}: маломерит</div>` : ""}
+      ${large > 0 ? `<div class="pt-fit-row">🔻 ${large} ${large === 1 ? "отзыв пишет" : "отзыва(ов) пишут"}: большемерит</div>` : ""}
+    </div>
+    <div class="pt-fit-note">Из ${cards.length} прочитанных отзывов на этой странице.</div>
+  `;
+}
+
+let feedbacksObserver = null;
+
+function initFeedbacksFitSignal() {
+  let attempts = 0;
+  const tryInit = () => {
+    const container = document.querySelector(".product-feedbacks__main-wrapper");
+    if (!container) return false;
+    scanFeedbacksForFitSignal();
+    if (feedbacksObserver) feedbacksObserver.disconnect();
+    feedbacksObserver = new MutationObserver(() => scanFeedbacksForFitSignal());
+    feedbacksObserver.observe(container, { childList: true, subtree: true });
+    return true;
+  };
+  if (tryInit()) return;
+  const interval = setInterval(() => {
+    attempts++;
+    if (tryInit() || attempts > 10) clearInterval(interval);
+  }, 500);
+}
+
 // Ozon: пока не реализовано — не смог вживую проверить вёрстку карточки товара (эта песочница
 // заблокирована на уровне IP на ozon.ru), а гадать по памяти рискованно, могло устареть. На Ozon
 // пока сработают только общие способы ниже (JSON-LD/meta/itemprop), если сайт их отдаёт.
@@ -363,6 +444,8 @@ function runRetryCascade() {
 function initForCurrentPage() {
   if (isWbSearchPage()) {
     initSearchValueBadges();
+  } else if (isWbFeedbacksPage()) {
+    initFeedbacksFitSignal();
   } else {
     runRetryCascade();
   }

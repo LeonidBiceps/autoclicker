@@ -19,7 +19,8 @@ const DEFAULT_SETTINGS = {
   mode: "cursor", // 'cursor' | 'point' | 'sequence'
   licenseKey: "",
   profiles: {}, // name -> settings subset
-  macros: {}, // name -> [{ x, y, t }, ...]
+  macros: {}, // name -> { events: [{ type: 'click'|'keydown'|'keyup', x?, y?, key?, t }, ...], repeat }
+  // старые макросы хранились как голый массив кликов без обёртки — main.js приводит их к этой форме на лету
   binds: [], // [{ id, hotkey, text }, ...] — глобальный хоткей печатает заданный текст (Pro)
   launchOnStartup: false,
   launchMinimized: false,

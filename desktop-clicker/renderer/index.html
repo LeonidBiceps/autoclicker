@@ -239,8 +239,8 @@
         <h1>🎬 Макросы</h1>
         <section id="macroSection">
           <h2>🎬 Запись реальных кликов <span class="pro-badge" id="macroBadge">Pro</span></h2>
-          <p class="hint">Записывает твои настоящие клики (позиция + тайминг) и воспроизводит один в
-            один. Только клики мышью, без клавиатуры.</p>
+          <p class="hint">Записывает твои настоящие клики и нажатия клавиш (позиция + тайминг) и
+            воспроизводит один в один — мышь и клавиатуру вместе.</p>
           <div class="field">
             <div class="row">
               <button id="recordBtn" class="secondary-btn">Начать запись</button>
@@ -340,11 +340,15 @@
 
   <div id="macroSaveOverlay" class="modal-overlay" hidden>
     <div class="modal-box">
-      <h2>Сохранить макрос</h2>
+      <h2 id="macroSaveTitle">Сохранить макрос</h2>
       <p class="hint" id="macroSaveInfo"></p>
       <div class="field">
         <label for="macroSaveName">Название</label>
         <input type="text" id="macroSaveName" placeholder="например: Фарм ресурса" />
+      </div>
+      <div class="field">
+        <label for="macroSaveRepeat">Повторов подряд <span title="Сколько раз подряд воспроизвести весь макрос за один запуск">ⓘ</span></label>
+        <input type="number" id="macroSaveRepeat" min="1" max="50" value="1" />
       </div>
       <div class="row">
         <button id="macroSaveConfirmBtn" class="primary-btn">Сохранить</button>

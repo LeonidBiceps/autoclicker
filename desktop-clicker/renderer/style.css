@@ -554,6 +554,10 @@ button:disabled {
   color: #6fe08a;
 }
 
+.macro-item .item-actions .edit-btn:hover {
+  color: #7fc4ff;
+}
+
 .macro-item .item-actions .delete-btn:hover {
   color: #ff8a8a;
 }

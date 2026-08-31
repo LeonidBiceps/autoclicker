@@ -263,6 +263,22 @@ function renderProfileSelect() {
 
 // --- Macros ---
 
+// Старые макросы хранились как голый массив кликов — main.js хранит их так же, если их ни разу
+// не пересохраняли через новую версию, поэтому рендер тоже должен понимать обе формы.
+function normalizeMacroClient(value) {
+  if (Array.isArray(value)) return { events: value, repeat: 1 };
+  return { events: (value && value.events) || [], repeat: (value && value.repeat) || 1 };
+}
+
+function describeMacroEvents(events) {
+  const clicks = events.filter((e) => !e.type || e.type === "click").length;
+  const keys = events.filter((e) => e.type === "keydown").length;
+  const parts = [];
+  if (clicks > 0) parts.push(`${clicks} клик${clicks === 1 ? "" : "ов"}`);
+  if (keys > 0) parts.push(`${keys} нажат${keys === 1 ? "ие" : "ий"} клавиш`);
+  return parts.length ? parts.join(", ") : "пусто";
+}
+
 function renderMacroList() {
   const list = document.getElementById("macroList");
   const names = Object.keys(settings.macros || {});
@@ -271,18 +287,24 @@ function renderMacroList() {
     return;
   }
   list.innerHTML = names
-    .map(
-      (n) => `<div class="macro-item">
-        <span>${escapeHtml(n)} (${settings.macros[n].length} кликов)</span>
+    .map((n) => {
+      const { events, repeat } = normalizeMacroClient(settings.macros[n]);
+      const repeatSuffix = repeat > 1 ? ` × ${repeat}` : "";
+      return `<div class="macro-item">
+        <span>${escapeHtml(n)} (${describeMacroEvents(events)}${repeatSuffix})</span>
         <div class="item-actions">
           <button class="play-btn" data-name="${escapeHtml(n)}">▶ Играть</button>
+          <button class="edit-btn" data-name="${escapeHtml(n)}">✎</button>
           <button class="delete-btn" data-name="${escapeHtml(n)}">×</button>
         </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
   list.querySelectorAll(".play-btn").forEach((btn) => {
     btn.addEventListener("click", () => window.api.playMacro(btn.dataset.name));
+  });
+  list.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openMacroEditModal(btn.dataset.name));
   });
   list.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -321,18 +343,39 @@ function renderBindList() {
 }
 
 let pendingMacroEvents = null;
+let macroModalMode = "save"; // 'save' — только что записанный макрос, 'edit' — уже сохранённый
+let editingMacroName = null;
 
 function openMacroSaveModal(events) {
+  macroModalMode = "save";
+  editingMacroName = null;
   pendingMacroEvents = events;
-  document.getElementById("macroSaveInfo").textContent = `Записано кликов: ${events.length}.`;
+  document.getElementById("macroSaveTitle").textContent = "Сохранить макрос";
+  document.getElementById("macroSaveInfo").textContent = `Записано: ${describeMacroEvents(events)}.`;
   const nameInput = document.getElementById("macroSaveName");
   nameInput.value = "";
+  document.getElementById("macroSaveRepeat").value = "1";
+  document.getElementById("macroSaveOverlay").hidden = false;
+  nameInput.focus();
+}
+
+function openMacroEditModal(name) {
+  const { events, repeat } = normalizeMacroClient(settings.macros[name]);
+  macroModalMode = "edit";
+  editingMacroName = name;
+  pendingMacroEvents = null;
+  document.getElementById("macroSaveTitle").textContent = "Изменить макрос";
+  document.getElementById("macroSaveInfo").textContent = `Записано: ${describeMacroEvents(events)}. Можно переименовать и задать число повторов — сами события записаны заново не будут.`;
+  const nameInput = document.getElementById("macroSaveName");
+  nameInput.value = name;
+  document.getElementById("macroSaveRepeat").value = String(repeat);
   document.getElementById("macroSaveOverlay").hidden = false;
   nameInput.focus();
 }
 
 function closeMacroSaveModal() {
   pendingMacroEvents = null;
+  editingMacroName = null;
   document.getElementById("macroSaveOverlay").hidden = true;
 }
 
@@ -350,7 +393,7 @@ function setRecordingUI(active) {
   document.getElementById("recordBtn").disabled = active || !proUnlocked;
   document.getElementById("stopRecordBtn").disabled = !active;
   if (active) {
-    document.getElementById("recordStatus").textContent = `Идёт запись… 0 кликов. Кликай, потом жми «Остановить» или ${settings.recordHotkey}.`;
+    document.getElementById("recordStatus").textContent = `Идёт запись… 0 событий. Кликай и/или печатай, потом жми «Остановить» или ${settings.recordHotkey}.`;
   }
 }
 
@@ -602,11 +645,27 @@ function bindHandlers() {
 
   document.getElementById("macroSaveConfirmBtn").addEventListener("click", async () => {
     const name = document.getElementById("macroSaveName").value.trim();
-    if (!name || !pendingMacroEvents) return;
+    const repeat = Math.max(1, Math.min(50, parseInt(document.getElementById("macroSaveRepeat").value, 10) || 1));
+    if (!name) return;
+
+    if (macroModalMode === "edit") {
+      const oldName = editingMacroName;
+      closeMacroSaveModal();
+      try {
+        settings.macros = await window.api.updateMacro(oldName, name, repeat);
+        renderMacroList();
+        document.getElementById("recordStatus").textContent = `Изменено: «${name}».`;
+      } catch (e) {
+        document.getElementById("recordStatus").textContent = `Не удалось изменить: ${e.message}`;
+      }
+      return;
+    }
+
+    if (!pendingMacroEvents) return;
     const events = pendingMacroEvents;
     closeMacroSaveModal();
     try {
-      settings.macros = await window.api.saveMacro(name, events);
+      settings.macros = await window.api.saveMacro(name, events, repeat);
       renderMacroList();
       document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
     } catch (e) {
@@ -614,8 +673,9 @@ function bindHandlers() {
     }
   });
   document.getElementById("macroSaveCancelBtn").addEventListener("click", () => {
+    const wasEdit = macroModalMode === "edit";
     closeMacroSaveModal();
-    document.getElementById("recordStatus").textContent = "Запись не сохранена.";
+    document.getElementById("recordStatus").textContent = wasEdit ? "Изменения отменены." : "Запись не сохранена.";
   });
   document.getElementById("macroSaveName").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("macroSaveConfirmBtn").click();
@@ -668,7 +728,7 @@ function bindHandlers() {
   window.api.onRecordingProgress((count) => {
     const status = document.getElementById("recordStatus");
     if (!document.getElementById("stopRecordBtn").disabled) {
-      status.textContent = `Идёт запись… ${count} кликов. Кликай, потом жми «Остановить» или ${settings.recordHotkey}.`;
+      status.textContent = `Идёт запись… ${count} событий. Кликай и/или печатай, потом жми «Остановить» или ${settings.recordHotkey}.`;
     }
   });
 }

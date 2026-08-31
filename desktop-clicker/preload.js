@@ -17,9 +17,10 @@ contextBridge.exposeInMainWorld("api", {
 
   startRecording: () => ipcRenderer.invoke("macro:startRecording"),
   stopRecording: () => ipcRenderer.invoke("macro:stopRecording"),
-  saveMacro: (name, events) => ipcRenderer.invoke("macro:save", name, events),
+  saveMacro: (name, events, repeat) => ipcRenderer.invoke("macro:save", name, events, repeat),
   playMacro: (name) => ipcRenderer.invoke("macro:play", name),
   deleteMacro: (name) => ipcRenderer.invoke("macro:delete", name),
+  updateMacro: (oldName, newName, repeat) => ipcRenderer.invoke("macro:update", oldName, newName, repeat),
 
   exportSettings: () => ipcRenderer.invoke("settings:export"),
   importSettings: () => ipcRenderer.invoke("settings:import"),

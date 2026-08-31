@@ -363,26 +363,63 @@ function refreshSeqMarkers() {
   }
 }
 
-// --- Macro recording (mouse clicks only, v1) ---
+// --- Macro recording (клики мыши + нажатия клавиш) ---
 
-function onRecordClick(e) {
-  recordedEvents.push({ x: Math.round(e.x), y: Math.round(e.y), t: Date.now() - recordStartTime });
+let recordedKeysDown = new Set();
+
+function reportRecordProgress() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("recording:progress", recordedEvents.length);
   }
+}
+
+// Хоткей остановки записи (F10 по умолчанию) сам проходит через тот же глобальный перехват
+// клавиатуры (uiohook), которым мы записываем макрос — без этого фильтра последним событием
+// каждого макроса всегда оказывалось бы нажатие самого хоткея остановки.
+function getRecordStopKeyName() {
+  const hotkey = store.get("recordHotkey") || "";
+  const parts = hotkey.split("+");
+  return parts[parts.length - 1];
+}
+
+function onRecordClick(e) {
+  recordedEvents.push({ type: "click", x: Math.round(e.x), y: Math.round(e.y), t: Date.now() - recordStartTime });
+  reportRecordProgress();
+}
+
+function onRecordKeydown(e) {
+  const name = keycodeToName(e.keycode);
+  if (!name || name === getRecordStopKeyName()) return;
+  if (recordedKeysDown.has(name)) return; // автоповтор ОС при удержании клавиши — не плодим события
+  recordedKeysDown.add(name);
+  recordedEvents.push({ type: "keydown", key: name, t: Date.now() - recordStartTime });
+  reportRecordProgress();
+}
+
+function onRecordKeyup(e) {
+  const name = keycodeToName(e.keycode);
+  if (!name || name === getRecordStopKeyName()) return;
+  recordedKeysDown.delete(name);
+  recordedEvents.push({ type: "keyup", key: name, t: Date.now() - recordStartTime });
+  reportRecordProgress();
 }
 
 function startRecording() {
   if (recording) return { ok: true };
   try {
     recordedEvents = [];
+    recordedKeysDown = new Set();
     recordStartTime = Date.now();
     uIOhook.on("click", onRecordClick);
+    uIOhook.on("keydown", onRecordKeydown);
+    uIOhook.on("keyup", onRecordKeyup);
     uIOhook.start();
     recording = true;
     return { ok: true };
   } catch (e) {
     uIOhook.removeListener("click", onRecordClick);
+    uIOhook.removeListener("keydown", onRecordKeydown);
+    uIOhook.removeListener("keyup", onRecordKeyup);
     recording = false;
     return { ok: false, error: e.message };
   }
@@ -393,17 +430,35 @@ function stopRecordingInternal() {
   recording = false;
   uIOhook.stop();
   uIOhook.removeListener("click", onRecordClick);
+  uIOhook.removeListener("keydown", onRecordKeydown);
+  uIOhook.removeListener("keyup", onRecordKeyup);
   return recordedEvents;
 }
 
-async function playMacro(events) {
-  let prevT = 0;
-  for (const ev of events) {
-    const delay = Math.min(3000, Math.max(0, ev.t - prevT));
-    await sleep(delay);
-    await mouse.setPosition(new Point(ev.x, ev.y));
-    await mouse.click(Button.LEFT);
-    prevT = ev.t;
+// Макросы, записанные до этой версии, хранились как голый массив кликов — приводим к единой форме,
+// чтобы не потерять уже сохранённые у пользователей макросы при обновлении.
+function normalizeMacro(value) {
+  if (Array.isArray(value)) return { events: value, repeat: 1 };
+  return { events: (value && value.events) || [], repeat: Math.max(1, Math.min(50, (value && value.repeat) || 1)) };
+}
+
+async function playMacro(events, repeat = 1) {
+  for (let i = 0; i < repeat; i++) {
+    let prevT = 0;
+    for (const ev of events) {
+      const delay = Math.min(3000, Math.max(0, ev.t - prevT));
+      await sleep(delay);
+      if (ev.type === "keydown") {
+        await keyboard.pressKey(resolveNutjsKey({ name: ev.key }));
+      } else if (ev.type === "keyup") {
+        await keyboard.releaseKey(resolveNutjsKey({ name: ev.key }));
+      } else {
+        // легаси-формат без type (и обычные клики) — как и раньше, клик левой кнопкой
+        await mouse.setPosition(new Point(ev.x, ev.y));
+        await mouse.click(Button.LEFT);
+      }
+      prevT = ev.t;
+    }
   }
 }
 
@@ -621,9 +676,9 @@ ipcMain.handle("macro:stopRecording", () => {
   return { events };
 });
 
-ipcMain.handle("macro:save", (event, name, events) => {
+ipcMain.handle("macro:save", (event, name, events, repeat) => {
   if (!name || !events || !events.length) return store.get("macros");
-  const macros = { ...store.get("macros"), [name]: events };
+  const macros = { ...store.get("macros"), [name]: { events, repeat: Math.max(1, Math.min(50, repeat || 1)) } };
   store.set({ macros });
   return macros;
 });
@@ -631,15 +686,28 @@ ipcMain.handle("macro:save", (event, name, events) => {
 ipcMain.handle("macro:play", async (event, name) => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
   const macros = store.get("macros") || {};
-  const events = macros[name];
-  if (!events) return { ok: false };
-  playMacro(events);
+  const raw = macros[name];
+  if (!raw) return { ok: false };
+  const { events, repeat } = normalizeMacro(raw);
+  playMacro(events, repeat);
   return { ok: true };
 });
 
 ipcMain.handle("macro:delete", (event, name) => {
   const macros = { ...store.get("macros") };
   delete macros[name];
+  store.set({ macros });
+  return macros;
+});
+
+ipcMain.handle("macro:update", (event, oldName, newName, repeat) => {
+  const macros = { ...store.get("macros") };
+  const raw = macros[oldName];
+  if (!raw) return macros;
+  const normalized = normalizeMacro(raw);
+  normalized.repeat = Math.max(1, Math.min(50, repeat || 1));
+  delete macros[oldName];
+  macros[newName || oldName] = normalized;
   store.set({ macros });
   return macros;
 });
