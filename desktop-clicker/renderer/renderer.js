@@ -65,7 +65,10 @@ function showPanel(name) {
 
 function initNavigation() {
   document.querySelectorAll(".nav-item").forEach((btn) => {
-    btn.addEventListener("click", () => showPanel(btn.dataset.target));
+    btn.addEventListener("click", () => {
+      showPanel(btn.dataset.target);
+      if (btn.dataset.target === "startup") renderStartupList();
+    });
   });
   showPanel("home");
 }
@@ -149,6 +152,8 @@ function updateProUI() {
   document.getElementById("bindsBadge").hidden = proUnlocked;
   document.getElementById("bindsTabBadge").hidden = proUnlocked;
   document.getElementById("colorTriggerBadge").hidden = proUnlocked;
+  document.getElementById("ocrBadge").hidden = proUnlocked;
+  document.getElementById("ocrTabBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -170,6 +175,8 @@ function updateProUI() {
     "colorSampleBtn",
     "colorToleranceSlider",
     "colorTolerance",
+    "ocrCaptureBtn",
+    "ocrLang",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -212,6 +219,7 @@ function loadIntoForm() {
   f.launchMinimized.checked = !!settings.launchMinimized;
   document.getElementById("launchMinimizedRow").style.opacity = settings.launchOnStartup ? "1" : "0.5";
   document.getElementById("licenseKey").value = settings.licenseKey;
+  document.getElementById("ocrLang").value = settings.ocrLang || "rus+eng";
 
   document.getElementById("intervalMsSlider").value = Math.min(2000, settings.intervalMs);
   document.getElementById("intervalMsValue").textContent = settings.intervalMs;
@@ -338,6 +346,42 @@ function renderBindList() {
       const binds2 = (settings.binds || []).filter((b) => b.id !== btn.dataset.id);
       await save({ binds: binds2 });
       renderBindList();
+    });
+  });
+}
+
+// --- Автозагрузка (управление автозапуском других программ) ---
+
+async function renderStartupList() {
+  const list = document.getElementById("startupList");
+  list.innerHTML = `<div class="empty-hint">Загрузка…</div>`;
+  const apps = await window.api.listStartupApps();
+  if (apps.length === 0) {
+    list.innerHTML = `<div class="empty-hint">🚀 Автозагрузка пуста</div>`;
+    return;
+  }
+  list.innerHTML = apps
+    .map(
+      (a) => `<div class="macro-item">
+        <span title="${escapeHtml(a.command)}">${escapeHtml(a.name)}</span>
+        <label class="switch">
+          <input type="checkbox" class="startup-toggle" data-name="${escapeHtml(a.name)}" data-source="${a.source}" ${a.enabled ? "checked" : ""} />
+          <span class="switch-slider"></span>
+        </label>
+      </div>`
+    )
+    .join("");
+  list.querySelectorAll(".startup-toggle").forEach((toggle) => {
+    toggle.addEventListener("change", async () => {
+      const status = document.getElementById("startupStatus");
+      toggle.disabled = true;
+      status.textContent = "";
+      const result = await window.api.toggleStartupApp(toggle.dataset.name, toggle.dataset.source, toggle.checked);
+      if (!result.ok) {
+        toggle.checked = !toggle.checked; // откатываем визуально, если не получилось
+        status.textContent = `Не удалось изменить «${toggle.dataset.name}»: ${result.error || "неизвестная ошибка"}.`;
+      }
+      toggle.disabled = false;
     });
   });
 }
@@ -715,6 +759,42 @@ function bindHandlers() {
     hotkeyInput.value = "";
     textInput.value = "";
     message.textContent = "Бинд добавлен.";
+  });
+
+  // Автозагрузка
+  document.getElementById("startupRefreshBtn").addEventListener("click", () => renderStartupList());
+
+  // Текст с экрана (OCR)
+  document.getElementById("ocrLang").addEventListener("change", (e) => save({ ocrLang: e.target.value }));
+  document.getElementById("ocrCaptureBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const status = document.getElementById("ocrStatus");
+    const btn = document.getElementById("ocrCaptureBtn");
+    btn.disabled = true;
+    status.textContent = "Выдели область на экране (Esc — отмена)…";
+    try {
+      const result = await window.api.captureAndRecognizeText();
+      if (!result.ok) {
+        status.textContent =
+          result.error === "cancelled"
+            ? "Отменено."
+            : result.error === "pro-required"
+              ? "Распознавание текста — Pro-функция."
+              : `Не удалось распознать: ${result.error || "неизвестная ошибка"}.`;
+      } else {
+        document.getElementById("ocrResult").value = result.text || "";
+        status.textContent = result.text ? "Готово." : "Текст не найден в выделенной области.";
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("ocrCopyBtn").addEventListener("click", () => {
+    const text = document.getElementById("ocrResult").value;
+    if (!text) return;
+    window.api.copyText(text);
+    const status = document.getElementById("ocrStatus");
+    status.textContent = "Скопировано в буфер обмена.";
   });
 
   window.api.onStatus((status) => renderStatus(status));

@@ -30,6 +30,8 @@
         <button class="nav-item" data-target="macros"><span class="nav-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
         <button class="nav-item" data-target="binds"><span class="nav-icon">⌨️</span> Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></button>
         <button class="nav-item" data-target="profiles"><span class="nav-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="startup"><span class="nav-icon">🚀</span> Автозагрузка</button>
+        <button class="nav-item" data-target="ocr"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
         <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
       </div>
     </nav>
@@ -310,6 +312,53 @@
             <button id="importBtn" class="secondary-btn">Импортировать из файла</button>
           </div>
           <p class="hint" id="importMessage"></p>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="startup" hidden>
+        <h1>🚀 Автозагрузка</h1>
+        <section id="startupSection">
+          <h2>🚀 Программы в автозагрузке <span title="Управляет автозапуском ДРУГИХ программ при входе в Windows — не путать с автозапуском самого МультиТула (это в разделе Настройки)">ⓘ</span></h2>
+          <p class="hint">Список программ, которые запускаются вместе с Windows. Выключение не
+            удаляет запись — можно включить обратно в любой момент. Не требует прав администратора
+            (программы, добавленные "для всех пользователей", здесь не показываются).</p>
+          <div class="field">
+            <button id="startupRefreshBtn" class="secondary-btn">Обновить список</button>
+            <p class="hint" id="startupStatus"></p>
+          </div>
+          <div class="field">
+            <div class="macro-list" id="startupList"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="ocr" hidden>
+        <h1>🔎 Текст с экрана</h1>
+        <section id="ocrSection">
+          <h2>🔎 Распознавание текста <span class="pro-badge" id="ocrBadge">Pro</span>
+            <span title="Выделяешь любую область экрана — текст с неё распознаётся и появляется ниже, можно скопировать">ⓘ</span></h2>
+          <p class="hint">Выделяешь область экрана — текст с неё распознаётся в поле ниже. Первое
+            распознавание на каждом языке скачивает языковые данные из интернета (несколько
+            мегабайт) и кеширует их — дальше работает офлайн.</p>
+          <div class="field">
+            <label for="ocrLang">Язык</label>
+            <select id="ocrLang">
+              <option value="rus+eng">Русский + English</option>
+              <option value="rus">Русский</option>
+              <option value="eng">English</option>
+            </select>
+          </div>
+          <div class="field">
+            <button id="ocrCaptureBtn" class="secondary-btn">Выделить область и распознать</button>
+            <p class="hint" id="ocrStatus"></p>
+          </div>
+          <div class="field">
+            <label for="ocrResult">Результат</label>
+            <textarea id="ocrResult" rows="8" readonly placeholder="Здесь появится распознанный текст"></textarea>
+            <div class="row">
+              <button id="ocrCopyBtn" class="secondary-btn">Скопировать</button>
+            </div>
+          </div>
         </section>
       </div>
 

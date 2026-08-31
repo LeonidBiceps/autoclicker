@@ -20,11 +20,14 @@ app.on("second-instance", () => {
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const { execFile } = require("child_process");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
-const { mouse, keyboard, screen: nutScreen, Point, Button } = require("@nut-tree-fork/nut-js");
+const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType } = require("@nut-tree-fork/nut-js");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
+const Tesseract = require("tesseract.js");
 
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
@@ -301,6 +304,92 @@ function pickPoint() {
   });
 }
 
+// --- Screen region picker (multi-monitor) — тот же приём, что и pickPoint, но с рамкой
+// выделения вместо одной точки. Используется для OCR: выделяешь область, а не кликаешь в точку.
+function pickRegion() {
+  return new Promise((resolve) => {
+    const displays = screen.getAllDisplays();
+    const overlays = [];
+    let done = false;
+
+    const finish = (absoluteRegion) => {
+      if (done) return;
+      done = true;
+      for (const w of overlays) {
+        if (!w.isDestroyed()) w.close();
+      }
+      resolve(absoluteRegion);
+    };
+
+    for (const display of displays) {
+      const overlay = new BrowserWindow({
+        x: display.bounds.x,
+        y: display.bounds.y,
+        width: display.bounds.width,
+        height: display.bounds.height,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        hasShadow: false,
+        webPreferences: {
+          contextIsolation: true,
+          preload: path.join(__dirname, "pick-preload.js"),
+        },
+      });
+      overlay.setAlwaysOnTop(true, "screen-saver");
+      overlay.loadFile(path.join(__dirname, "renderer", "region-overlay.html"));
+      overlay.webContents.once("did-finish-load", () => {
+        overlay.webContents.executeJavaScript(`window.__offsetX = ${display.bounds.x}; window.__offsetY = ${display.bounds.y};`);
+      });
+      overlay.on("closed", () => {
+        if (!done) finish(null);
+      });
+      overlays.push(overlay);
+    }
+
+    const handler = (event, region) => {
+      ipcMain.removeListener("region:done", handler);
+      finish(region);
+    };
+    ipcMain.once("region:done", handler);
+  });
+}
+
+// --- OCR: захват выделенной области экрана + распознавание текста (Pro) ---
+//
+// Кроп делаем через nut-js screen.captureRegion() (та же библиотека, что уже используется для
+// клика/цвета — без новых нативных зависимостей), а распознавание — через tesseract.js (чистый
+// JS+WASM, тоже без пересборки под Electron). Языковые данные (.traineddata) tesseract.js по
+// умолчанию скачивает с CDN при первом использовании конкретного языка и кеширует у себя —
+// поэтому первое распознавание на новом языке требует интернет разово, дальше работает офлайн.
+// Кеш кладём в userData (а не в cwd, куда по умолчанию метит библиотека, — cwd упакованного .exe
+// может быть недоступен для записи или просто непредсказуем).
+const OCR_CACHE_DIR = () => {
+  const dir = path.join(app.getPath("userData"), "tessdata");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+async function runOcr(region, lang) {
+  let imagePath = null;
+  try {
+    imagePath = await nutScreen.captureRegion(
+      `multitool-ocr-${Date.now()}`,
+      new Region(region.x, region.y, region.width, region.height),
+      FileType.PNG,
+      os.tmpdir()
+    );
+    const result = await Tesseract.recognize(imagePath, lang || "rus+eng", { cachePath: OCR_CACHE_DIR() });
+    return { ok: true, text: (result.data.text || "").trim() };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    if (imagePath) fs.unlink(imagePath, () => {});
+  }
+}
+
 // --- Key capture (for keyboard auto-press mode) ---
 
 function captureNextKey() {
@@ -459,6 +548,114 @@ async function playMacro(events, repeat = 1) {
       }
       prevT = ev.t;
     }
+  }
+}
+
+// --- Startup apps manager (включить/выключить чужие программы в автозагрузке) ---
+//
+// Два источника, оба не требуют прав администратора (в отличие от HKLM\...\Run или общей папки
+// автозагрузки "для всех пользователей"):
+//  1. HKCU\...\CurrentVersion\Run — команды автозапуска для текущего пользователя. Выключение —
+//     не удаление: переносим значение в свой раздел HKCU\Software\МультиТул\DisabledRun, обратно —
+//     при включении. Это НЕ тот же механизм, что использует сам Task Manager (у него недокументированный
+//     бинарный формат в HKCU\...\StartupApproved\Run) — свой раздел проще и полностью обратим, но
+//     переключатель в самом Task Manager это не отразит (запись остаётся видна там как "включена",
+//     потому что физически убрана из Run, а не помечена флагом).
+//  2. Папка автозагрузки текущего пользователя (%APPDATA%\...\Startup) — ярлыки .lnk. Выключение —
+//     просто переименование в *.lnk.disabled (Explorer не запускает файлы с таким расширением),
+//     включение — переименование обратно. Ничего не удаляется.
+// Работаем через reg.exe (встроен в Windows) — без новых нативных зависимостей.
+
+const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const DISABLED_RUN_KEY = "HKCU\\Software\\МультиТул\\DisabledRun";
+
+function getStartupFolder() {
+  return path.join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+}
+
+function regQuery(key) {
+  return new Promise((resolve) => {
+    execFile("reg", ["query", key], { windowsHide: true }, (err, stdout) => {
+      if (err) return resolve({});
+      const entries = {};
+      for (const line of stdout.split(/\r?\n/)) {
+        const m = line.match(/^ {4}(\S.*?) {4}(REG_\w+) {4}(.*)$/);
+        if (m) entries[m[1]] = { type: m[2], value: m[3] };
+      }
+      resolve(entries);
+    });
+  });
+}
+
+function regAdd(key, name, type, value) {
+  return new Promise((resolve, reject) => {
+    execFile("reg", ["add", key, "/v", name, "/t", type, "/d", value, "/f"], { windowsHide: true }, (err) =>
+      err ? reject(err) : resolve()
+    );
+  });
+}
+
+function regDelete(key, name) {
+  return new Promise((resolve, reject) => {
+    execFile("reg", ["delete", key, "/v", name, "/f"], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
+  });
+}
+
+async function listStartupApps() {
+  const [active, disabled] = await Promise.all([regQuery(RUN_KEY), regQuery(DISABLED_RUN_KEY)]);
+  const apps = [];
+  for (const [name, info] of Object.entries(active)) {
+    apps.push({ name, command: info.value, source: "registry", enabled: true });
+  }
+  for (const [name, info] of Object.entries(disabled)) {
+    apps.push({ name, command: info.value, source: "registry", enabled: false });
+  }
+
+  let files = [];
+  try {
+    files = fs.readdirSync(getStartupFolder());
+  } catch (e) {
+    files = [];
+  }
+  for (const file of files) {
+    if (file.toLowerCase().endsWith(".lnk")) {
+      apps.push({ name: file.replace(/\.lnk$/i, ""), command: file, source: "folder", enabled: true });
+    } else if (file.toLowerCase().endsWith(".lnk.disabled")) {
+      apps.push({ name: file.replace(/\.lnk\.disabled$/i, ""), command: file, source: "folder", enabled: false });
+    }
+  }
+  apps.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  return apps;
+}
+
+async function toggleStartupApp(name, source, enable) {
+  try {
+    if (source === "registry") {
+      if (enable) {
+        const disabled = await regQuery(DISABLED_RUN_KEY);
+        const entry = disabled[name];
+        if (!entry) return { ok: false, error: "not-found" };
+        await regAdd(RUN_KEY, name, entry.type, entry.value);
+        await regDelete(DISABLED_RUN_KEY, name);
+      } else {
+        const active = await regQuery(RUN_KEY);
+        const entry = active[name];
+        if (!entry) return { ok: false, error: "not-found" };
+        await regAdd(DISABLED_RUN_KEY, name, entry.type, entry.value);
+        await regDelete(RUN_KEY, name);
+      }
+      return { ok: true };
+    }
+    if (source === "folder") {
+      const folder = getStartupFolder();
+      const activePath = path.join(folder, `${name}.lnk`);
+      const disabledPath = path.join(folder, `${name}.lnk.disabled`);
+      fs.renameSync(enable ? disabledPath : activePath, enable ? activePath : disabledPath);
+      return { ok: true };
+    }
+    return { ok: false, error: "unknown-source" };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 }
 
@@ -710,6 +907,18 @@ ipcMain.handle("macro:update", (event, oldName, newName, repeat) => {
   macros[newName || oldName] = normalized;
   store.set({ macros });
   return macros;
+});
+
+ipcMain.handle("startup:list", () => listStartupApps());
+
+ipcMain.handle("startup:toggle", (event, name, source, enable) => toggleStartupApp(name, source, enable));
+
+ipcMain.handle("ocr:capture", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  const lang = store.get("ocrLang") || "rus+eng";
+  return runOcr(region, lang);
 });
 
 ipcMain.handle("settings:export", async () => {

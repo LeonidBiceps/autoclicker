@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, clipboard } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
   getSettings: () => ipcRenderer.invoke("settings:get"),
@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld("api", {
 
   exportSettings: () => ipcRenderer.invoke("settings:export"),
   importSettings: () => ipcRenderer.invoke("settings:import"),
+
+  listStartupApps: () => ipcRenderer.invoke("startup:list"),
+  toggleStartupApp: (name, source, enable) => ipcRenderer.invoke("startup:toggle", name, source, enable),
+
+  captureAndRecognizeText: () => ipcRenderer.invoke("ocr:capture"),
+  copyText: (text) => clipboard.writeText(text),
 
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),

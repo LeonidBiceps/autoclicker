@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   binds: [], // [{ id, hotkey, text }, ...] — глобальный хоткей печатает заданный текст (Pro)
   launchOnStartup: false,
   launchMinimized: false,
+  ocrLang: "rus+eng", // 'rus' | 'eng' | 'rus+eng' — распознавание текста со скриншота (Pro)
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).

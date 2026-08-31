@@ -254,7 +254,8 @@ h2 [title] {
 input[type="number"],
 input[type="text"],
 input[type="time"],
-select {
+select,
+textarea {
   width: 100%;
   max-width: 240px;
   padding: 7px 10px;
@@ -266,10 +267,17 @@ select {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+textarea {
+  max-width: none;
+  font-family: inherit;
+  resize: vertical;
+}
+
 input[type="number"]:focus,
 input[type="text"]:focus,
 input[type="time"]:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: #2d6cdf;
   box-shadow: 0 0 0 3px rgba(45, 108, 223, 0.2);
@@ -530,6 +538,17 @@ button:disabled {
   border-radius: 6px;
   background: #22252d;
   font-size: 12px;
+}
+
+#startupList .macro-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+#startupList .switch {
+  flex-shrink: 0;
 }
 
 .seq-item button,
