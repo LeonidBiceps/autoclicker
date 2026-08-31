@@ -20,10 +20,17 @@ const ROOT = path.join(__dirname, "..");
 
 const FILES_TO_OBFUSCATE = ["main.js", "license.js", "keymap.js", "store.js", "preload.js", "pick-preload.js"];
 
+// ВАЖНО: controlFlowFlattening и selfDefending — самые агрессивные трансформации
+// javascript-obfuscator, и у обеих есть известные (задокументированные в issues проекта) баги:
+// зависание/порча выполнения на некоторых устройствах/CPU без видимой причины, невоспроизводимо
+// на других машинах. Ровно это и произошло — пользователь получил намертво зависшее окно
+// (не реагирует вообще ни на что, включая hover), на моей машине то же самое не воспроизвелось
+// ни разу. Отключил обе — работающее приложение важнее лишнего барьера от взлома, которого и так
+// достаточно за счёт stringArray/identifierNamesGenerator/deadCodeInjection (эти трансформации
+// намного безопаснее: не перестраивают порядок выполнения существующего кода).
 const OBFUSCATOR_OPTIONS = {
   compact: true,
-  controlFlowFlattening: true,
-  controlFlowFlatteningThreshold: 0.75,
+  controlFlowFlattening: false,
   deadCodeInjection: true,
   deadCodeInjectionThreshold: 0.4,
   stringArray: true,
@@ -31,7 +38,7 @@ const OBFUSCATOR_OPTIONS = {
   stringArrayThreshold: 0.75,
   identifierNamesGenerator: "hexadecimal",
   renameGlobals: false,
-  selfDefending: true,
+  selfDefending: false,
   target: "node",
 };
 
