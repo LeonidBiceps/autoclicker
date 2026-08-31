@@ -1,4 +1,18 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification } = require("electron");
+
+// Не даём запускать вторую копию — раньше при зависании и повторных запусках можно было
+// накопить несколько параллельных процессов в трее, и непонятно было, какое окно вообще
+// открылось. Теперь повторный запуск .exe просто поднимает уже работающее окно.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 // Заполни своей страницей (Boosty, DonationAlerts и т.п. — то, что реально работает из России).
 // Пустая строка = кнопка доната покажет честное сообщение «ссылка ещё не настроена», а не тихо
@@ -421,10 +435,18 @@ function createWindow(startHidden) {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 
+  let trayHintShown = false;
   mainWindow.on("close", (e) => {
     if (!app.isQuiting) {
       e.preventDefault();
       mainWindow.hide();
+      if (!trayHintShown && Notification.isSupported()) {
+        trayHintShown = true;
+        new Notification({
+          title: "МультиТул продолжает работать",
+          body: "Окно свёрнуто в трей (значок рядом с часами). Чтобы закрыть совсем — правый клик по значку → «Выход».",
+        }).show();
+      }
     }
   });
 }
@@ -435,6 +457,14 @@ function updateTrayMenu() {
     { label: "Показать окно", click: () => mainWindow.show() },
     { label: running ? "Стоп" : "Старт", click: () => toggleClicking() },
     { type: "separator" },
+    {
+      label: "Перезапустить",
+      click: () => {
+        app.relaunch();
+        app.isQuiting = true;
+        app.quit();
+      },
+    },
     {
       label: "Выход",
       click: () => {
