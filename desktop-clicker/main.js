@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification, session, desktopCapturer } = require("electron");
 
 // Не даём запускать вторую копию — раньше при зависании и повторных запусках можно было
 // накопить несколько параллельных процессов в трее, и непонятно было, какое окно вообще
@@ -767,12 +767,31 @@ async function typeBindText(text) {
 // --- Window / tray ---
 
 function createWindow(startHidden) {
+  // Загрузочный экран: окно и так не мгновенно готово (нативные модули — nut-js/uiohook —
+  // подключаются при старте), без сплэша был бы момент пустого/белого окна. Не показываем его при
+  // тихом автозапуске в трей — незачем мигать окном, которое тут же спрячется.
+  let splash = null;
+  if (!startHidden) {
+    splash = new BrowserWindow({
+      width: 260,
+      height: 260,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
+      webPreferences: { contextIsolation: true },
+    });
+    splash.loadFile(path.join(__dirname, "renderer", "splash.html"));
+  }
+
   mainWindow = new BrowserWindow({
     width: 720,
     height: 720,
     minWidth: 560,
     minHeight: 480,
-    show: !startHidden,
+    show: false,
     icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       contextIsolation: true,
@@ -781,6 +800,11 @@ function createWindow(startHidden) {
   });
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+
+  mainWindow.once("ready-to-show", () => {
+    if (splash && !splash.isDestroyed()) splash.close();
+    if (!startHidden) mainWindow.show();
+  });
 
   let trayHintShown = false;
   mainWindow.on("close", (e) => {
@@ -1191,6 +1215,29 @@ ipcMain.handle("record:stop", async () => {
   });
 });
 
+// --- Запись экрана, режим "видео" (Pro, экспериментально) ---
+//
+// Настоящий видеопоток через getDisplayMedia()+MediaRecorder — плавное видео с реальным fps (до
+// 60), а не таймлапс из отдельных кадров, как режим выше. Проверено вживую: РАНЬШЕ этот же подход
+// (через устаревший getUserMedia+chromeMediaSourceId) периодически подвешивал рендерер намертво во
+// время самого захвата на одной из тестовых машин — неясно, было ли дело именно в устаревшем API
+// или в конкретной среде (виртуалка/RDP без Desktop Duplication). Современный getDisplayMedia +
+// setDisplayMediaRequestHandler (выше, в app.whenReady) — как минимум чище по коду; если он тоже
+// окажется нестабильным на каких-то машинах, режим "таймлапс" рядом остаётся надёжным запасным
+// вариантом, поэтому оба режима — выбор в интерфейсе, а не взаимная замена.
+ipcMain.handle("record:saveVideo", async (event, arrayBuffer) => {
+  const recordingsDir = path.join(app.getPath("userData"), "recordings");
+  fs.mkdirSync(recordingsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outFile = path.join(recordingsDir, `clip-${stamp}.webm`);
+  try {
+    fs.writeFileSync(outFile, Buffer.from(arrayBuffer));
+    return { ok: true, path: outFile };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("record:openFolder", () => {
   const dir = path.join(app.getPath("userData"), "recordings"); // та же папка, что и при сохранении записи
   fs.mkdirSync(dir, { recursive: true });
@@ -1259,6 +1306,17 @@ app.whenReady().then(async () => {
   registerShortcuts();
   refreshSeqMarkers();
   if (store.get("antiAfkEnabled")) startAntiAfk();
+
+  // Позволяет рендереру звать navigator.mediaDevices.getDisplayMedia() без системного диалога
+  // выбора окна — сразу отдаём основной экран. Нужно для режима "видео" в записи экрана.
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
+        callback(sources[0] ? { video: sources[0] } : {});
+      });
+    },
+    { useSystemPicker: false }
+  );
 });
 
 app.on("window-all-closed", () => {

@@ -422,10 +422,17 @@
         <h1>🎥 Запись экрана</h1>
         <section id="recordSection">
           <h2>🎥 Запись экрана <span class="pro-badge" id="recordBadge">Pro</span>
-            <span title="Записывает основной экран целиком в файл .mp4 — не буфер повторов последних N секунд, а обычная запись старт/стоп. Не плавное видео, а таймлапс: кадры идут с реальным темпом захвата (обычно единицы fps)">ⓘ</span></h2>
-          <p class="hint">Записывает основной экран целиком, пока не нажмёшь «Остановить», в формате
-            .mp4 — таймлапс из кадров, а не плавное видео (обычно 2-4 кадра в секунду). Файл
+            <span title="Записывает основной экран целиком, пока не нажмёшь «Остановить». Файл сохраняется в папке данных приложения">ⓘ</span></h2>
+          <p class="hint">Записывает основной экран целиком, пока не нажмёшь «Остановить». Файл
             сохраняется в папке данных приложения — открыть её можно кнопкой ниже.</p>
+          <div class="field">
+            <label for="recordMode">Режим</label>
+            <select id="recordMode">
+              <option value="timelapse">Таймлапс (.mp4, надёжно, 2-4 fps)</option>
+              <option value="video">Видео (.webm, до 60 fps, экспериментально)</option>
+            </select>
+            <p class="hint" id="recordModeHint"></p>
+          </div>
           <div class="field">
             <div class="row">
               <button id="recordStartBtn" class="secondary-btn">Начать запись</button>

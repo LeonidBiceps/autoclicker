@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   scheduleRepeat: "once", // 'once' | 'daily' | 'interval' — во сколько раз повторять отложенный старт (Pro)
   scheduleIntervalMin: 30,
   textTrigger: { enabled: false, region: null, expectedText: "", lang: "rus+eng" }, // Pro: клик только когда в области экрана появляется заданный текст (OCR)
+  recordMode: "timelapse", // 'timelapse' (надёжно, единицы fps) | 'video' (плавно, до 60 fps, экспериментально)
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).

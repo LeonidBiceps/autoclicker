@@ -187,6 +187,7 @@ function updateProUI() {
     "scheduleIntervalMin",
     "recordStartBtn",
     "recordOpenFolderBtn",
+    "recordMode",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -230,6 +231,8 @@ function loadIntoForm() {
   document.getElementById("launchMinimizedRow").style.opacity = settings.launchOnStartup ? "1" : "0.5";
   document.getElementById("licenseKey").value = settings.licenseKey;
   document.getElementById("ocrLang").value = settings.ocrLang || "rus+eng";
+  document.getElementById("recordMode").value = settings.recordMode || "timelapse";
+  updateRecordModeHint();
 
   document.getElementById("intervalMsSlider").value = Math.min(2000, settings.intervalMs);
   document.getElementById("intervalMsValue").textContent = settings.intervalMs;
@@ -871,6 +874,10 @@ function bindHandlers() {
 
   // Текст с экрана (OCR)
   document.getElementById("ocrLang").addEventListener("change", (e) => save({ ocrLang: e.target.value }));
+  document.getElementById("recordMode").addEventListener("change", (e) => {
+    save({ recordMode: e.target.value });
+    updateRecordModeHint();
+  });
   document.getElementById("ocrCaptureBtn").addEventListener("click", async () => {
     if (!proUnlocked) return;
     const status = document.getElementById("ocrStatus");
@@ -931,19 +938,72 @@ function bindHandlers() {
   });
 }
 
-// --- Запись экрана (Pro) ---
-// Захват кадров и кодирование в ffmpeg целиком в main-процессе (main.js) — рендереру остаётся
-// только старт/стоп по IPC и отображение результата. Не плавное видео, а последовательность
-// кадров с реальным темпом захвата (обычно единицы fps) — таймлапс, а не видеозапись в привычном
-// смысле; см. README про то, почему не через desktopCapturer/MediaRecorder.
+// --- Запись экрана (Pro) — два режима на выбор ---
+//
+// "Таймлапс": захват кадров и кодирование в ffmpeg целиком в main-процессе (main.js) — надёжно
+// проверено вживую, но реальный темп захвата единицы fps (полноэкранный снимок — тяжёлая операция).
+//
+// "Видео": настоящий видеопоток через getDisplayMedia()+MediaRecorder прямо в рендерере — плавно,
+// до 60 fps, но это тот класс API, что на одной из тестовых машин раньше (через устаревший
+// getUserMedia+chromeMediaSourceId) подвешивал процесс намертво во время захвата. Современный
+// getDisplayMedia — по крайней мере чище, но не проверено на такой же нестабильной машине, поэтому
+// оба режима остаются рядом как явный выбор, а не тихая замена одного другим.
+
+function updateRecordModeHint() {
+  const mode = document.getElementById("recordMode").value;
+  const hint = document.getElementById("recordModeHint");
+  hint.textContent =
+    mode === "video"
+      ? "Плавное видео с реальным fps экрана. Экспериментально — если зависнет во время записи, переключись на «Таймлапс»."
+      : "Надёжный режим: отдельные кадры собираются в .mp4 по остановке. Не плавное видео — 2-4 кадра в секунду.";
+}
+
+let videoRecorder = null;
+let videoChunks = [];
+let videoStream = null;
+
+async function startVideoRecording(status) {
+  try {
+    videoStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 } });
+  } catch (e) {
+    status.textContent = `Не удалось начать запись видео: ${e.message}`;
+    return false;
+  }
+  videoChunks = [];
+  videoRecorder = new MediaRecorder(videoStream, { mimeType: "video/webm;codecs=vp9" });
+  videoRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) videoChunks.push(e.data);
+  };
+  videoRecorder.onstop = async () => {
+    videoStream.getTracks().forEach((t) => t.stop());
+    const blob = new Blob(videoChunks, { type: "video/webm" });
+    const buffer = await blob.arrayBuffer();
+    status.textContent = "Сохраняем файл…";
+    const result = await window.api.saveVideoRecording(buffer);
+    document.getElementById("recordStartBtn").disabled = !proUnlocked;
+    status.textContent = result.ok ? `Сохранено: ${result.path}` : `Не удалось сохранить: ${result.error}`;
+  };
+  videoRecorder.start();
+  return true;
+}
+
+function stopVideoRecording() {
+  if (videoRecorder && videoRecorder.state !== "inactive") videoRecorder.stop();
+}
 
 async function startScreenRecording() {
   if (!proUnlocked) return;
   const status = document.getElementById("recordScreenStatus");
-  const result = await window.api.startRecordingScreen();
-  if (!result.ok) {
-    status.textContent = `Не удалось начать запись: ${result.error}`;
-    return;
+  const mode = settings.recordMode || "timelapse";
+  if (mode === "video") {
+    const ok = await startVideoRecording(status);
+    if (!ok) return;
+  } else {
+    const result = await window.api.startRecordingScreen();
+    if (!result.ok) {
+      status.textContent = `Не удалось начать запись: ${result.error}`;
+      return;
+    }
   }
   document.getElementById("recordStartBtn").disabled = true;
   document.getElementById("recordStopBtn").disabled = false;
@@ -952,13 +1012,19 @@ async function startScreenRecording() {
 
 async function stopScreenRecording() {
   const status = document.getElementById("recordScreenStatus");
-  status.textContent = "Собираем видео из кадров…";
   document.getElementById("recordStopBtn").disabled = true;
-  const result = await window.api.stopRecordingScreen();
-  document.getElementById("recordStartBtn").disabled = !proUnlocked;
-  status.textContent = result.ok
-    ? `Сохранено: ${result.path} (${result.frames} кадров, ~${result.fps} fps)`
-    : `Не удалось сохранить: ${result.error}`;
+  const mode = settings.recordMode || "timelapse";
+  if (mode === "video") {
+    status.textContent = "Собираем видео…";
+    stopVideoRecording(); // recordStartBtn разблокируется внутри onstop — сохранение асинхронное
+  } else {
+    status.textContent = "Собираем видео из кадров…";
+    const result = await window.api.stopRecordingScreen();
+    document.getElementById("recordStartBtn").disabled = !proUnlocked;
+    status.textContent = result.ok
+      ? `Сохранено: ${result.path} (${result.frames} кадров, ~${result.fps} fps)`
+      : `Не удалось сохранить: ${result.error}`;
+  }
 }
 
 async function init() {

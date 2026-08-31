@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("api", {
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
+  saveVideoRecording: (buffer) => ipcRenderer.invoke("record:saveVideo", buffer),
   openRecordingsFolder: () => ipcRenderer.invoke("record:openFolder"),
 
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
