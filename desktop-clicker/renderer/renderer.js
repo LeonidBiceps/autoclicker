@@ -161,6 +161,7 @@ function updateProUI() {
   document.getElementById("telegramBadge").hidden = proUnlocked;
   document.getElementById("imageTriggerBadge").hidden = proUnlocked;
   document.getElementById("turboModeBadge").hidden = proUnlocked;
+  document.getElementById("sequenceClickAllBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -205,6 +206,7 @@ function updateProUI() {
     "imageTriggerConfidenceSlider",
     "imageTriggerConfidence",
     "turboModeEnabled",
+    "sequenceClickAllEnabled",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -260,6 +262,7 @@ function loadIntoForm() {
 
   document.getElementById("turboModeEnabled").checked = !!settings.turboMode;
   updateTurboModeHint();
+  document.getElementById("sequenceClickAllEnabled").checked = !!settings.sequenceClickAll;
 
   const tolerance = (settings.colorTrigger && settings.colorTrigger.tolerance) || 0;
   document.getElementById("colorToleranceSlider").value = Math.min(150, tolerance);
@@ -578,6 +581,9 @@ function bindHandlers() {
     await save({ turboMode: e.target.checked });
     updateTurboModeHint();
   });
+  document.getElementById("sequenceClickAllEnabled").addEventListener("change", async (e) => {
+    await save({ sequenceClickAll: e.target.checked });
+  });
   bindSlider("colorTolerance", (v) =>
     save({ colorTrigger: { ...settings.colorTrigger, tolerance: Math.max(0, v || 0) } })
   );
@@ -758,9 +764,9 @@ function bindHandlers() {
   });
 
   document.getElementById("seqAddBtn").addEventListener("click", async () => {
-    const point = await window.api.pickPoint();
-    if (point) {
-      const points = [...(settings.sequencePoints || []), point];
+    const newPoints = await window.api.pickPoints();
+    if (newPoints && newPoints.length) {
+      const points = [...(settings.sequencePoints || []), ...newPoints];
       await save({ sequencePoints: points });
       renderSeqList();
     }

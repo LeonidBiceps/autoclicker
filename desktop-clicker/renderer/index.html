@@ -106,10 +106,20 @@
           <div class="field" id="sequenceField" hidden>
             <div class="seq-list" id="seqList"></div>
             <div class="row">
-              <button id="seqAddBtn" class="secondary-btn">Добавить точку</button>
+              <button id="seqAddBtn" class="secondary-btn">Добавить точки</button>
               <button id="seqClearBtn" class="secondary-btn">Очистить</button>
             </div>
-            <p class="hint">На экране появятся синие кружки с номерами — так видно, где именно будут клики.</p>
+            <p class="hint">Можно кликнуть сразу несколько точек подряд — Enter или правая кнопка мыши завершают добавление, Backspace отменяет последнюю, Esc — всё добавление.</p>
+            <label class="switch-row">
+              <span>Кликать во все точки сразу, не по очереди
+                <span class="pro-badge" id="sequenceClickAllBadge">Pro</span>
+                <span title="Обычно клик по очереди обходит точки по одной за раз интервала. С этой галочкой каждый тик жмёт сразу во ВСЕ точки подряд — удобно, если это несколько разных кнопок одного действия, которые нужно нажать все вместе">ⓘ</span>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="sequenceClickAllEnabled" />
+                <span class="switch-slider"></span>
+              </span>
+            </label>
           </div>
         </section>
 

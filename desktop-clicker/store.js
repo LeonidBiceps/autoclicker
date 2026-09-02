@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   fixedPoint: null, // { x, y }
   sequencePoints: [], // [{ x, y }, ...]
   mode: "cursor", // 'cursor' | 'point' | 'sequence'
+  sequenceClickAll: false, // Pro: в режиме "sequence" кликать на каждый тик сразу во ВСЕ точки, а не по одной по очереди
   licenseKey: "",
   profiles: {}, // name -> settings subset
   macros: {}, // name -> { events: [{ type: 'click'|'keydown'|'keyup', x?, y?, key?, t }, ...], repeat }
@@ -61,6 +62,7 @@ const PROFILE_FIELDS = [
   "mode",
   "fixedPoint",
   "sequencePoints",
+  "sequenceClickAll",
   "targetWindowTitle",
   "textTrigger",
   "imageTrigger",

@@ -88,6 +88,26 @@ function getMouseTargetPoint(settings) {
   return null;
 }
 
+function applyJitter(point, settings) {
+  if (!proUnlocked || settings.positionJitterPx <= 0) return point;
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.random() * settings.positionJitterPx;
+  return {
+    x: Math.round(point.x + Math.cos(angle) * r),
+    y: Math.round(point.y + Math.sin(angle) * r),
+  };
+}
+
+async function clickButton(settings) {
+  if (settings.button === "right") {
+    await mouse.click(Button.RIGHT);
+  } else if (settings.button === "double") {
+    await mouse.doubleClick(Button.LEFT);
+  } else {
+    await mouse.click(Button.LEFT);
+  }
+}
+
 async function performClick() {
   const settings = store.getAll();
 
@@ -98,30 +118,34 @@ async function performClick() {
     return;
   }
 
+  // Pro: вместо обхода последовательности по одной точке за тик — на каждый тик жмём сразу во ВСЕ
+  // сохранённые точки подряд (например, несколько кнопок одного действия на экране, которые нужно
+  // нажать все разом, а не одну за другой в течение нескольких тиков интервала).
+  if (settings.mode === "sequence" && proUnlocked && settings.sequenceClickAll && settings.sequencePoints.length > 0) {
+    for (const rawPoint of settings.sequencePoints) {
+      const point = applyJitter(rawPoint, settings);
+      await mouse.setPosition(new Point(point.x, point.y));
+      await clickButton(settings);
+    }
+    return;
+  }
+
   let point = getMouseTargetPoint(settings);
-  if (!point) {
-    const current = await mouse.getPosition();
-    point = { x: current.x, y: current.y };
+  const jitterActive = proUnlocked && settings.positionJitterPx > 0;
+
+  // В режиме "по курсору" без разброса позиции точка не нужна вообще — курсор и так уже стоит
+  // там, где надо, а getPosition()+setPosition() это два лишних нативных вызова на каждый клик
+  // (setPosition() ставил курсор туда же, где он и был). В турбо-режиме это заметно на скорости.
+  if (point || jitterActive) {
+    if (!point) {
+      const current = await mouse.getPosition();
+      point = { x: current.x, y: current.y };
+    }
+    point = applyJitter(point, settings);
+    await mouse.setPosition(new Point(point.x, point.y));
   }
 
-  if (proUnlocked && settings.positionJitterPx > 0) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = Math.random() * settings.positionJitterPx;
-    point = {
-      x: Math.round(point.x + Math.cos(angle) * r),
-      y: Math.round(point.y + Math.sin(angle) * r),
-    };
-  }
-
-  await mouse.setPosition(new Point(point.x, point.y));
-
-  if (settings.button === "right") {
-    await mouse.click(Button.RIGHT);
-  } else if (settings.button === "double") {
-    await mouse.doubleClick(Button.LEFT);
-  } else {
-    await mouse.click(Button.LEFT);
-  }
+  await clickButton(settings);
 }
 
 // --- Color trigger (click only when a watched pixel matches a target color, Pro) ---
@@ -291,15 +315,8 @@ function scheduleNext() {
   if (!running) return;
   const settings = store.getAll();
   const turbo = proUnlocked && settings.turboMode;
-  let delay;
-  if (turbo) {
-    delay = 0;
-  } else {
-    const jitter = settings.jitterMs > 0 ? (Math.random() * 2 - 1) * settings.jitterMs : 0;
-    delay = Math.max(10, settings.intervalMs + jitter);
-  }
 
-  timerId = setTimeout(async () => {
+  const tick = async () => {
     try {
       const canClick =
         (await windowFocusConditionMet(settings)) &&
@@ -319,7 +336,19 @@ function scheduleNext() {
     }
     if (!turbo || sessionClicks % TURBO_STATUS_THROTTLE === 0) sendStatus();
     if (!checkAutoStop(settings)) scheduleNext();
-  }, delay);
+  };
+
+  if (turbo) {
+    // setImmediate вместо setTimeout(fn, 0) — на Windows таймеры libuv квантуются под системную
+    // гранулярность (обычно ~15мс), а setImmediate выполняется сразу после текущей фазы цикла
+    // событий, без ожидания таймера. В турбо-режиме, где вся цель — максимальная скорость, это
+    // даёт заметный прирост кликов в секунду.
+    timerId = setImmediate(tick);
+  } else {
+    const jitter = settings.jitterMs > 0 ? (Math.random() * 2 - 1) * settings.jitterMs : 0;
+    const delay = Math.max(10, settings.intervalMs + jitter);
+    timerId = setTimeout(tick, delay);
+  }
 }
 
 function startClicking() {
@@ -354,6 +383,7 @@ function startClicking() {
 function stopClicking(note) {
   running = false;
   clearTimeout(timerId);
+  clearImmediate(timerId);
   stopTextTriggerPolling();
   stopImageTriggerPolling();
   sendStatus();
@@ -610,6 +640,85 @@ function pickPoint() {
       finish(absolute);
     };
     ipcMain.once("pick:done", handler);
+  });
+}
+
+// --- Multi-point picking (multi-monitor) — тот же приём, что и pickPoint, но окна выделения не
+// закрываются после первого клика: кликаешь сколько нужно точек подряд, Enter/ПКМ завершает и
+// возвращает их все разом (для цепочки точек — раньше приходилось жать "Добавить точку" на каждую).
+function pickPoints() {
+  return new Promise((resolve) => {
+    const displays = screen.getAllDisplays();
+    const overlays = [];
+    let done = false;
+    const points = [];
+
+    const broadcastCount = () => {
+      for (const w of overlays) {
+        if (!w.isDestroyed()) w.webContents.send("points:count", points.length);
+      }
+    };
+
+    const cleanup = () => {
+      ipcMain.removeListener("points:add", addHandler);
+      ipcMain.removeListener("points:undo", undoHandler);
+      ipcMain.removeListener("points:finish", finishHandler);
+      ipcMain.removeListener("points:cancel", cancelHandler);
+    };
+
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      for (const w of overlays) {
+        if (!w.isDestroyed()) w.close();
+      }
+      resolve(result);
+    };
+
+    const addHandler = (event, point) => {
+      points.push(point);
+      broadcastCount();
+    };
+    const undoHandler = () => {
+      points.pop();
+      broadcastCount();
+    };
+    const finishHandler = () => finish(points.length ? points.slice() : null);
+    const cancelHandler = () => finish(null);
+
+    ipcMain.on("points:add", addHandler);
+    ipcMain.on("points:undo", undoHandler);
+    ipcMain.on("points:finish", finishHandler);
+    ipcMain.on("points:cancel", cancelHandler);
+
+    for (const display of displays) {
+      const overlay = new BrowserWindow({
+        x: display.bounds.x,
+        y: display.bounds.y,
+        width: display.bounds.width,
+        height: display.bounds.height,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        hasShadow: false,
+        webPreferences: {
+          contextIsolation: true,
+          preload: path.join(__dirname, "pick-preload.js"),
+        },
+      });
+      overlay.setAlwaysOnTop(true, "screen-saver");
+      overlay.loadFile(path.join(__dirname, "renderer", "multi-point-overlay.html"));
+      overlay.webContents.once("did-finish-load", () => {
+        overlay.webContents.executeJavaScript(`window.__offsetX = ${display.bounds.x}; window.__offsetY = ${display.bounds.y};`);
+      });
+      overlay.on("closed", () => {
+        if (!done) finish(points.length ? points.slice() : null);
+      });
+      overlays.push(overlay);
+    }
   });
 }
 
@@ -1311,6 +1420,7 @@ ipcMain.handle("system:pickActiveWindowTitle", async () => {
 ipcMain.handle("click:toggle", () => toggleClicking());
 ipcMain.handle("click:status", () => ({ running, clickCount: sessionClicks }));
 ipcMain.handle("point:pick", () => pickPoint());
+ipcMain.handle("points:pick", () => pickPoints());
 ipcMain.handle("key:capture", () => captureNextKey());
 
 ipcMain.handle("color:sample", async (event, point) => {

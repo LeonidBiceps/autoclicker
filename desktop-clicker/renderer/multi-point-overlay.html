@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      background: rgba(20, 20, 30, 0.15);
+      overflow: hidden;
+    }
+    .hint {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: #1a1d24;
+      color: #eef0f4;
+      font: 13px -apple-system, "Segoe UI", Roboto, sans-serif;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .marker {
+      position: fixed;
+      width: 26px;
+      height: 26px;
+      margin-left: -13px;
+      margin-top: -13px;
+      border-radius: 50%;
+      background: rgba(90, 160, 255, 0.85);
+      border: 2px solid #fff;
+      color: #fff;
+      font: bold 12px -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div class="hint" id="hint">Кликай по всем нужным точкам подряд. Enter/ПКМ — готово, Backspace — отменить последнюю, Esc — отмена всего.</div>
+  <script>
+    const hint = document.getElementById("hint");
+    const localMarkers = [];
+
+    function addMarker(x, y, number) {
+      const el = document.createElement("div");
+      el.className = "marker";
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      el.textContent = number;
+      document.body.appendChild(el);
+      localMarkers.push(el);
+    }
+
+    function removeLastLocalMarker() {
+      const el = localMarkers.pop();
+      if (el) el.remove();
+    }
+
+    document.addEventListener("click", (e) => {
+      const offsetX = window.__offsetX || 0;
+      const offsetY = window.__offsetY || 0;
+      addMarker(e.clientX, e.clientY, localMarkers.length + 1);
+      window.pickApi.addPoint({ x: Math.round(e.clientX + offsetX), y: Math.round(e.clientY + offsetY) });
+    });
+
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      window.pickApi.finishPoints();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        window.pickApi.cancelPoints();
+      } else if (e.key === "Enter") {
+        window.pickApi.finishPoints();
+      } else if (e.key === "Backspace") {
+        if (localMarkers.length > 0) {
+          removeLastLocalMarker();
+          window.pickApi.undoPoint();
+        }
+      }
+    });
+
+    window.pickApi.onPointsCount((count) => {
+      hint.textContent = `Точек: ${count}. Кликай дальше, Enter/ПКМ — готово, Backspace — отменить последнюю, Esc — отмена всего.`;
+    });
+  </script>
+</body>
+</html>
