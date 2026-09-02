@@ -160,6 +160,7 @@ function updateProUI() {
   document.getElementById("idleStartBadge").hidden = proUnlocked;
   document.getElementById("telegramBadge").hidden = proUnlocked;
   document.getElementById("imageTriggerBadge").hidden = proUnlocked;
+  document.getElementById("turboModeBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -203,6 +204,7 @@ function updateProUI() {
     "imageTriggerPickBtn",
     "imageTriggerConfidenceSlider",
     "imageTriggerConfidence",
+    "turboModeEnabled",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -256,6 +258,9 @@ function loadIntoForm() {
   document.getElementById("positionJitterPxSlider").value = Math.min(200, settings.positionJitterPx);
   document.getElementById("positionJitterPxValue").textContent = settings.positionJitterPx;
 
+  document.getElementById("turboModeEnabled").checked = !!settings.turboMode;
+  updateTurboModeHint();
+
   const tolerance = (settings.colorTrigger && settings.colorTrigger.tolerance) || 0;
   document.getElementById("colorToleranceSlider").value = Math.min(150, tolerance);
   document.getElementById("colorTolerance").value = tolerance;
@@ -288,6 +293,15 @@ function loadIntoForm() {
 
   updateActionVisibility();
   updateModeVisibility();
+}
+
+function updateTurboModeHint() {
+  const turboOn = document.getElementById("turboModeEnabled").checked && proUnlocked;
+  for (const id of ["intervalMsSlider", "intervalMs", "jitterMsSlider", "jitterMs"]) {
+    document.getElementById(id).disabled = turboOn;
+  }
+  document.getElementById("intervalMsSlider").closest(".field").style.opacity = turboOn ? "0.5" : "1";
+  document.getElementById("jitterMsSlider").closest(".field").style.opacity = turboOn ? "0.5" : "1";
 }
 
 function updateTargetWindowHint() {
@@ -560,6 +574,10 @@ function bindHandlers() {
   bindSlider("intervalMs", (v) => save({ intervalMs: Math.max(10, v || 100) }));
   bindSlider("jitterMs", (v) => save({ jitterMs: Math.max(0, v || 0) }));
   bindSlider("positionJitterPx", (v) => save({ positionJitterPx: Math.max(0, v || 0) }));
+  document.getElementById("turboModeEnabled").addEventListener("change", async (e) => {
+    await save({ turboMode: e.target.checked });
+    updateTurboModeHint();
+  });
   bindSlider("colorTolerance", (v) =>
     save({ colorTrigger: { ...settings.colorTrigger, tolerance: Math.max(0, v || 0) } })
   );

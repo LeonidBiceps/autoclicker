@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS = {
   telegramOnTrigger: false, // слать уведомление и при срабатывании цвет-/текст-/картинка-триггера, не только старт/стоп кликера
   clipboardHistoryEnabled: true,
   clipboardHistory: [], // [{ ts, text }, ...] — последние 50 записей
+  turboMode: false, // Pro: игнорирует интервал/разброс — кликает так быстро, как позволяет железо
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).
@@ -63,6 +64,7 @@ const PROFILE_FIELDS = [
   "targetWindowTitle",
   "textTrigger",
   "imageTrigger",
+  "turboMode",
 ];
 
 class Store {

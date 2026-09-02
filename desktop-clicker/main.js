@@ -281,11 +281,23 @@ function checkAutoStop(settings) {
   return false;
 }
 
+// Раз в сколько кликов обновлять HUD/статус/меню трея в турбо-режиме — на сотнях кликов в секунду
+// делать это на каждый тик означало бы гонять IPC в HUD-окно и пересобирать меню трея сотни раз в
+// секунду, а это не бесплатно и реально тормозит именно турбо-режим, который весь смысл имеет в
+// максимальной скорости. В обычном режиме (клики и так редкие) частота не меняется.
+const TURBO_STATUS_THROTTLE = 20;
+
 function scheduleNext() {
   if (!running) return;
   const settings = store.getAll();
-  const jitter = settings.jitterMs > 0 ? (Math.random() * 2 - 1) * settings.jitterMs : 0;
-  const delay = Math.max(10, settings.intervalMs + jitter);
+  const turbo = proUnlocked && settings.turboMode;
+  let delay;
+  if (turbo) {
+    delay = 0;
+  } else {
+    const jitter = settings.jitterMs > 0 ? (Math.random() * 2 - 1) * settings.jitterMs : 0;
+    delay = Math.max(10, settings.intervalMs + jitter);
+  }
 
   timerId = setTimeout(async () => {
     try {
@@ -297,13 +309,15 @@ function scheduleNext() {
       if (canClick) {
         await performClick();
         sessionClicks++;
-        updateHud(`● ${sessionClicks} кликов`);
+        if (!turbo || sessionClicks % TURBO_STATUS_THROTTLE === 0) {
+          updateHud(`● ${sessionClicks} кликов`);
+        }
       }
     } catch (e) {
       stopClicking(`Ошибка: ${e.message}`);
       return;
     }
-    sendStatus();
+    if (!turbo || sessionClicks % TURBO_STATUS_THROTTLE === 0) sendStatus();
     if (!checkAutoStop(settings)) scheduleNext();
   }, delay);
 }
@@ -1701,6 +1715,16 @@ app.whenReady().then(async () => {
   if (store.get("clipboardHistoryEnabled")) startClipboardPolling();
   nutScreen.config.resourceDirectory = getImageTemplatesDir(); // для триггера по картинке — imageResource() ищет файлы относительно этой папки
   providerRegistry.registerImageFinder(new JimpImageFinder()); // в nut-js нет готового ImageFinder — используем свой (см. image-finder.js)
+  // У nut-js по умолчанию встроена скрытая пауза ПЕРЕД каждым кликом/нажатием клавиши —
+  // mouse.config.autoDelayMs = 100 и keyboard.config.autoDelayMs = 300 (задумано как "человечнее",
+  // но здесь автоматизация, не ручной ввод). Из-за этого слайдер интервала на вкладке "Клик" врал:
+  // выставленные там 10мс на деле оборачивались в ~110мс на клик (и ~600мс на "клик" в режиме
+  // клавиатуры — pressKey + releaseKey, каждый со своей паузой в 300мс), а для игры с несколькими
+  // точками — то же самое умножается на каждую точку. Обнаружено по жалобе "поставил минимум, а всё
+  // равно медленно, особенно с несколькими точками". Обнуляем обе паузы — реальная скорость клика
+  // теперь наконец соответствует тому, что показывает интерфейс.
+  mouse.config.autoDelayMs = 0;
+  keyboard.config.autoDelayMs = 0;
   checkForUpdate();
 
   // Позволяет рендереру звать navigator.mediaDevices.getDisplayMedia() без системного диалога

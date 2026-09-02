@@ -164,6 +164,16 @@
               <input type="number" id="positionJitterPx" min="0" step="1" class="slider-number" />
             </div>
           </div>
+          <label class="switch-row">
+            <span>Турбо-режим — кликать без интервала, максимально быстро
+              <span class="pro-badge" id="turboModeBadge">Pro</span>
+              <span title="Игнорирует интервал и разброс выше — кликает так быстро, как позволяет железо. Реальная скорость упирается не в JS-таймер, а в саму ОС (перемещение курсора, симуляция клика) — обычно это заметно быстрее интервала в 10мс, но не бесконечно быстро">ⓘ</span>
+            </span>
+            <span class="switch">
+              <input type="checkbox" id="turboModeEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
         </section>
 
         <section id="colorTriggerSection">
