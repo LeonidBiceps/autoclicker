@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
   recordMode: "timelapse", // 'timelapse' (надёжно, единицы fps) | 'video' (плавно, до 60 fps, экспериментально)
   recordMonitorId: null, // id монитора для записи (screen.getAllDisplays()[i].id), null = основной
   recordAudio: false, // Pro, только режим "видео": системный звук через loopback
+  recordIndicatorEnabled: true, // показывать поверх экрана мигающий "REC" во время записи (попадает и в саму запись — можно выключить)
   idleStartEnabled: false, // "обратный анти-АФК" — запустить кликер автоматически после простоя
   idleStartThresholdSec: 60,
   telegramEnabled: false,

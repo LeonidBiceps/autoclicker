@@ -194,6 +194,7 @@ function updateProUI() {
     "recordOpenFolderBtn",
     "recordMode",
     "recordAudio",
+    "recordIndicatorEnabled",
     "idleStartEnabled",
     "idleStartThresholdSec",
     "telegramEnabled",
@@ -293,6 +294,7 @@ function loadIntoForm() {
   document.getElementById("clipboardHistoryEnabled").checked = settings.clipboardHistoryEnabled !== false;
 
   document.getElementById("recordAudio").checked = !!settings.recordAudio;
+  document.getElementById("recordIndicatorEnabled").checked = settings.recordIndicatorEnabled !== false;
 
   updateActionVisibility();
   updateModeVisibility();
@@ -1025,6 +1027,7 @@ function bindHandlers() {
   document.getElementById("recordOpenFolderBtn").addEventListener("click", () => window.api.openRecordingsFolder());
   document.getElementById("recordMonitor").addEventListener("change", (e) => save({ recordMonitorId: parseInt(e.target.value, 10) }));
   document.getElementById("recordAudio").addEventListener("change", (e) => save({ recordAudio: e.target.checked }));
+  document.getElementById("recordIndicatorEnabled").addEventListener("change", (e) => save({ recordIndicatorEnabled: e.target.checked }));
 
   // Автостарт при простое ("обратный анти-АФК")
   document.getElementById("idleStartEnabled").addEventListener("change", (e) => {
@@ -1216,7 +1219,7 @@ async function startVideoRecording(status) {
     videoStream.getTracks().forEach((t) => t.stop());
     const blob = new Blob(videoChunks, { type: "video/webm" });
     const buffer = await blob.arrayBuffer();
-    status.textContent = "Сохраняем файл…";
+    status.textContent = "Конвертируем в MP4…";
     const result = await window.api.saveVideoRecording(buffer);
     document.getElementById("recordStartBtn").disabled = !proUnlocked;
     status.textContent = result.ok ? `Сохранено: ${result.path}` : `Не удалось сохранить: ${result.error}`;
@@ -1291,6 +1294,7 @@ async function init() {
   const result = await window.api.getSettings();
   settings = result.settings;
   proUnlocked = result.proUnlocked;
+  if (result.appVersion) document.getElementById("versionBadge").textContent = `v${result.appVersion}`;
   loadIntoForm();
   updateProUI();
   renderProfileSelect();

@@ -454,6 +454,7 @@ let recordHudWindow = null;
 
 function createRecordHud() {
   if (recordHudWindow) return;
+  if (!store.get("recordIndicatorEnabled")) return;
   const target = getRecordDisplay();
   recordHudWindow = new BrowserWindow({
     x: target.bounds.x + target.bounds.width - 100,
@@ -1319,7 +1320,7 @@ function panicStopAll() {
 
 ipcMain.handle("settings:get", async () => {
   const result = await refreshLicense();
-  return { settings: store.getAll(), proUnlocked: result.valid };
+  return { settings: store.getAll(), proUnlocked: result.valid, appVersion: app.getVersion() };
 });
 
 ipcMain.handle("settings:set", (event, partial) => {
@@ -1740,17 +1741,35 @@ ipcMain.handle("record:stop", async () => {
 // setDisplayMediaRequestHandler (выше, в app.whenReady) — как минимум чище по коду; если он тоже
 // окажется нестабильным на каких-то машинах, режим "таймлапс" рядом остаётся надёжным запасным
 // вариантом, поэтому оба режима — выбор в интерфейсе, а не взаимная замена.
+// Сохранённый MediaRecorder-поток (кодек vp9 в контейнере .webm) на многих машинах вообще не
+// открывается штатным плеером Windows — "Кино и ТВ"/Проводник без отдельно поставленных кодеков
+// не умеют VP9/WebM, и получается честный баг с точки зрения пользователя: "видео записалось, а
+// открыть не могу", хотя в Chrome/VLC всё проигрывалось нормально. Прогоняем через тот же ffmpeg,
+// что и таймлапс, и отдаём .mp4 (H.264) — он открывается везде из коробки без доп. кодеков.
 ipcMain.handle("record:saveVideo", async (event, arrayBuffer) => {
   const recordingsDir = path.join(app.getPath("userData"), "recordings");
   fs.mkdirSync(recordingsDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const outFile = path.join(recordingsDir, `clip-${stamp}.webm`);
+  const tmpWebm = path.join(os.tmpdir(), `multitool-rec-${stamp}.webm`);
+  const outFile = path.join(recordingsDir, `clip-${stamp}.mp4`);
+
   try {
-    fs.writeFileSync(outFile, Buffer.from(arrayBuffer));
-    return { ok: true, path: outFile };
+    fs.writeFileSync(tmpWebm, Buffer.from(arrayBuffer));
   } catch (e) {
     return { ok: false, error: e.message };
   }
+
+  return new Promise((resolve) => {
+    execFile(
+      ffmpegPath,
+      ["-y", "-i", tmpWebm, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", outFile],
+      (err) => {
+        fs.rm(tmpWebm, { force: true }, () => {});
+        if (err) resolve({ ok: false, error: err.message });
+        else resolve({ ok: true, path: outFile });
+      }
+    );
+  });
 });
 
 ipcMain.handle("record:openFolder", () => {

@@ -139,6 +139,12 @@ h1 {
   gap: 8px;
 }
 
+.version-badge {
+  font-size: 11px;
+  color: #6b7080;
+  white-space: nowrap;
+}
+
 .tier-badge {
   display: inline-block;
   padding: 2px 7px;

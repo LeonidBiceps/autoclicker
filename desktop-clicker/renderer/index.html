@@ -10,6 +10,7 @@
     <nav class="sidebar">
       <div class="sidebar-brand">
         <span class="brand-name">МультиТул</span>
+        <span class="version-badge" id="versionBadge"></span>
         <span class="tier-badge" id="tierBadge">Free</span>
       </div>
 
@@ -477,7 +478,7 @@
             <label for="recordMode">Режим</label>
             <select id="recordMode">
               <option value="timelapse">Таймлапс (.mp4, надёжно, 2-4 fps)</option>
-              <option value="video">Видео (.webm, до 60 fps, экспериментально)</option>
+              <option value="video">Видео (.mp4, до 60 fps, экспериментально)</option>
             </select>
             <p class="hint" id="recordModeHint"></p>
           </div>
@@ -490,6 +491,17 @@
               <span>Записывать системный звук</span>
               <span class="switch">
                 <input type="checkbox" id="recordAudio" />
+                <span class="switch-slider"></span>
+              </span>
+            </label>
+          </div>
+          <div class="field">
+            <label class="switch-row">
+              <span>Показывать индикатор записи (REC) поверх экрана
+                <span title="Мигающая точка с надписью REC в углу экрана, пока идёт запись. Она попадает и в саму запись — выключи, если не нужна в итоговом файле">ⓘ</span>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="recordIndicatorEnabled" />
                 <span class="switch-slider"></span>
               </span>
             </label>
