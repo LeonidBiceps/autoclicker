@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("api", {
   sampleColor: (point) => ipcRenderer.invoke("color:sample", point),
   captureKey: () => ipcRenderer.invoke("key:capture"),
   openDonate: () => ipcRenderer.invoke("donate:open"),
+  openExternal: (url) => ipcRenderer.invoke("system:openExternal", url),
 
   setSchedule: (hhmm, repeat, intervalMin) => ipcRenderer.invoke("schedule:set", hhmm, repeat, intervalMin),
   cancelSchedule: () => ipcRenderer.invoke("schedule:cancel"),
@@ -38,9 +39,19 @@ contextBridge.exposeInMainWorld("api", {
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
   saveVideoRecording: (buffer) => ipcRenderer.invoke("record:saveVideo", buffer),
   openRecordingsFolder: () => ipcRenderer.invoke("record:openFolder"),
+  listRecordMonitors: () => ipcRenderer.invoke("record:listMonitors"),
+  showRecordHud: () => ipcRenderer.invoke("record:hudShow"),
+  hideRecordHud: () => ipcRenderer.invoke("record:hudHide"),
+
+  getUpdateInfo: () => ipcRenderer.invoke("update:get"),
+  testTelegram: () => ipcRenderer.invoke("telegram:test"),
+  getActivityLog: () => ipcRenderer.invoke("activity:get"),
+  clearActivityLog: () => ipcRenderer.invoke("activity:clear"),
 
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),
   onRecordingStopped: (callback) => ipcRenderer.on("recording:stopped", (_e, events) => callback(events)),
   onRecordingProgress: (callback) => ipcRenderer.on("recording:progress", (_e, count) => callback(count)),
+  onActivityNew: (callback) => ipcRenderer.on("activity:new", (_e, entry) => callback(entry)),
+  onUpdateAvailable: (callback) => ipcRenderer.on("update:available", (_e, info) => callback(info)),
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification, session, desktopCapturer } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification, session, desktopCapturer, powerMonitor } = require("electron");
 
 // Не даём запускать вторую копию — раньше при зависании и повторных запусках можно было
 // накопить несколько параллельных процессов в трее, и непонятно было, какое окно вообще
@@ -260,6 +260,8 @@ function startClicking() {
     startTextTriggerPolling(settings.textTrigger);
   }
   scheduleNext();
+  logActivity("🟢 Кликер запущен");
+  notifyTelegram("🟢 Кликер запущен");
 }
 
 function stopClicking(note) {
@@ -269,6 +271,8 @@ function stopClicking(note) {
   sendStatus();
   destroyHud();
   if (note) sendNote(note);
+  logActivity(note ? `🔴 Кликер остановлен: ${note}` : "🔴 Кликер остановлен");
+  notifyTelegram(note ? `🔴 Кликер остановлен: ${note}` : "🔴 Кликер остановлен");
 }
 
 function toggleClicking() {
@@ -313,6 +317,121 @@ function destroyHud() {
   if (hudWindow) {
     hudWindow.close();
     hudWindow = null;
+  }
+}
+
+// Монитор для записи хранится по id (screen.getAllDisplays()[i].id), не по индексу массива —
+// desktopCapturer.getSources() и screen.getAllDisplays() не гарантируют одинаковый порядок,
+// поэтому сопоставлять их можно только через стабильный id, а не позицию в списке (проверено
+// вживую: индексы реально не совпадали на этой двухмониторной машине).
+function getRecordDisplay() {
+  const id = store.get("recordMonitorId");
+  if (id == null) return screen.getPrimaryDisplay();
+  return screen.getAllDisplays().find((d) => d.id === id) || screen.getPrimaryDisplay();
+}
+
+// --- HUD "идёт запись" (независим от счётчика кликов выше) ---
+
+let recordHudWindow = null;
+
+function createRecordHud() {
+  if (recordHudWindow) return;
+  const target = getRecordDisplay();
+  recordHudWindow = new BrowserWindow({
+    x: target.bounds.x + target.bounds.width - 100,
+    y: target.bounds.y + 16,
+    width: 84,
+    height: 32,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    webPreferences: { contextIsolation: true },
+  });
+  recordHudWindow.setIgnoreMouseEvents(true);
+  recordHudWindow.setAlwaysOnTop(true, "screen-saver");
+  recordHudWindow.loadFile(path.join(__dirname, "renderer", "record-hud.html"));
+  recordHudWindow.once("ready-to-show", () => recordHudWindow && recordHudWindow.show());
+}
+
+function destroyRecordHud() {
+  if (recordHudWindow) {
+    recordHudWindow.close();
+    recordHudWindow = null;
+  }
+}
+
+// --- Журнал активности: краткая история значимых событий (для отладки автоматизации) ---
+// Храним последние 100 записей в settings.json — этого достаточно, чтобы понять, что произошло,
+// пока не смотрел на экран, не разрастаясь бесконечно с каждым запуском.
+
+// --- Проверка обновлений: просто ссылка, без автозагрузки/установки ---
+//
+// Раньше был баннер, который "выглядел плохо" — сейчас просто кладём результат в переменную и
+// показываем маленькую строку-ссылку на Главной, если версия новее. Тот же источник (GitHub
+// releases), что уже используют браузерные расширения для своей проверки обновлений.
+
+let latestUpdateInfo = null;
+
+function isNewerVersion(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return true;
+    if (na < nb) return false;
+  }
+  return false;
+}
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch("https://api.github.com/repos/LeonidBiceps/autoclicker/releases/latest");
+    if (!res.ok) return;
+    const data = await res.json();
+    const latestVersion = (data.tag_name || "").replace(/^v/, "");
+    const current = app.getVersion();
+    if (latestVersion && isNewerVersion(latestVersion, current)) {
+      latestUpdateInfo = { available: true, latestVersion, url: data.html_url };
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update:available", latestUpdateInfo);
+      }
+    }
+  } catch (e) {
+    // нет интернета/GitHub недоступен — тихо, не мешаем работе приложения
+  }
+}
+
+function logActivity(message) {
+  if (!store) return;
+  const log = [...(store.get("activityLog") || []), { ts: Date.now(), message }].slice(-100);
+  store.set({ activityLog: log });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("activity:new", { ts: Date.now(), message });
+  }
+}
+
+// --- Уведомления в Telegram (Pro) — на старт/стоп кликера, чтобы знать, что происходит, пока
+// не смотришь на экран (дальний фарм). Через обычный Bot API, без библиотек — global fetch есть
+// в Node/Electron этой версии из коробки. Молча проглатываем сетевые ошибки — уведомление не
+// должно ронять или тормозить сам автокликер.
+async function notifyTelegram(text) {
+  if (!store || !proUnlocked) return;
+  const settings = store.getAll();
+  if (!settings.telegramEnabled || !settings.telegramBotToken || !settings.telegramChatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: settings.telegramChatId, text: `МультиТул: ${text}` }),
+    });
+  } catch (e) {
+    // нет интернета/неверный токен — не мешаем автоматизации работать дальше
   }
 }
 
@@ -646,6 +765,39 @@ function stopAntiAfk() {
   antiAfkTimer = null;
 }
 
+// --- "Обратный анти-АФК" — запустить кликер САМ после простоя (для дальнего фарма), в отличие от
+// анти-АФК выше, который простою как раз мешает. powerMonitor.getSystemIdleTime() — секунды с
+// последнего реального ввода с клавиатуры/мыши, штатный Electron API, не нужен uiohook.
+
+let idleStartTimer = null;
+let idleStartArmed = true; // взводится заново после того, как пользователь вернулся (идёт активность)
+
+function idleStartTick() {
+  if (!store.get("idleStartEnabled")) return;
+  const idleSec = powerMonitor.getSystemIdleTime();
+  const threshold = Math.max(5, store.get("idleStartThresholdSec") || 60);
+  if (idleSec >= threshold) {
+    if (idleStartArmed && !running) {
+      idleStartArmed = false; // не перезапускать снова и снова, пока простой продолжается
+      startClicking();
+    }
+  } else {
+    idleStartArmed = true; // пользователь снова активен — следующий простой опять сработает
+  }
+  idleStartTimer = setTimeout(idleStartTick, 5000);
+}
+
+function startIdleStartPolling() {
+  if (idleStartTimer) return;
+  idleStartArmed = true;
+  idleStartTick();
+}
+
+function stopIdleStartPolling() {
+  if (idleStartTimer) clearTimeout(idleStartTimer);
+  idleStartTimer = null;
+}
+
 // --- Startup apps manager (включить/выключить чужие программы в автозагрузке) ---
 //
 // Два источника, оба не требуют прав администратора (в отличие от HKLM\...\Run или общей папки
@@ -923,6 +1075,10 @@ ipcMain.handle("settings:set", (event, partial) => {
     if (partial.antiAfkEnabled) startAntiAfk();
     else stopAntiAfk();
   }
+  if ("idleStartEnabled" in partial) {
+    if (partial.idleStartEnabled) startIdleStartPolling();
+    else stopIdleStartPolling();
+  }
   return store.getAll();
 });
 
@@ -933,6 +1089,43 @@ ipcMain.handle("license:verify", async (event, key) => {
 });
 
 ipcMain.handle("system:getMachineId", () => getMachineId());
+
+ipcMain.handle("update:get", () => latestUpdateInfo);
+
+ipcMain.handle("record:listMonitors", () => {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((d, i) => ({
+    id: d.id,
+    width: d.bounds.width,
+    height: d.bounds.height,
+    label: `Монитор ${i + 1} (${d.bounds.width}×${d.bounds.height}${d.id === primaryId ? ", основной" : ""}${
+      d.bounds.x < 0 || d.bounds.y < 0 ? " — только режим «Видео»" : ""
+    })`,
+  }));
+});
+
+ipcMain.handle("telegram:test", async () => {
+  const settings = store.getAll();
+  if (!settings.telegramBotToken || !settings.telegramChatId) return { ok: false, error: "Заполни токен бота и ID чата" };
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: settings.telegramChatId, text: "МультиТул: тестовое уведомление ✅" }),
+    });
+    const data = await res.json();
+    return data.ok ? { ok: true } : { ok: false, error: data.description || "Telegram отклонил запрос" };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("activity:get", () => store.get("activityLog") || []);
+
+ipcMain.handle("activity:clear", () => {
+  store.set({ activityLog: [] });
+  return [];
+});
 
 // Пауза перед считыванием заголовка: если сделать это сразу, "активным окном" всегда будет само
 // МультиТул (пользователь только что кликнул кнопку в нём) — даём 3 секунды переключиться на
@@ -965,6 +1158,12 @@ ipcMain.handle("donate:open", () => {
   if (!DONATE_URL) return { ok: false, error: "not-configured" };
   shell.openExternal(DONATE_URL);
   return { ok: true };
+});
+
+// Только https — используется для ссылки "скачать новую версию" (страница релиза на GitHub),
+// не для произвольных адресов откуда угодно.
+ipcMain.handle("system:openExternal", (event, url) => {
+  if (typeof url === "string" && url.startsWith("https://")) shell.openExternal(url);
 });
 
 // Отложенный старт: разово ("once"), каждый день в это же время ("daily"), или каждые N минут
@@ -1133,8 +1332,7 @@ const RECORD_TARGET_FPS = 4; // полноэкранный кадр — тяжё
 const RECORD_FRAME_INTERVAL_MS = 1000 / RECORD_TARGET_FPS;
 
 async function recordingLoop() {
-  const width = await nutScreen.width();
-  const height = await nutScreen.height();
+  const { x, y, width, height } = getRecordDisplay().bounds;
   while (recordingFrames) {
     const frameStart = Date.now();
     const frameBase = `frame-${String(recordFrameCount + 1).padStart(6, "0")}`;
@@ -1144,7 +1342,7 @@ async function recordingLoop() {
       // проверено вживую, такое бывает — цикл всё равно должен продолжиться и рано или поздно
       // увидеть recordingFrames=false, а не встать намертво в ожидании одного кадра навсегда.
       await Promise.race([
-        nutScreen.captureRegion(frameBase, new Region(0, 0, width, height), FileType.JPG, recordFrameDir),
+        nutScreen.captureRegion(frameBase, new Region(x, y, width, height), FileType.JPG, recordFrameDir),
         new Promise((_, reject) => setTimeout(() => reject(new Error("frame capture timeout")), 3000)),
       ]);
       recordFrameCount++;
@@ -1164,16 +1362,35 @@ async function recordingLoop() {
 ipcMain.handle("record:start", (event) => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
   if (recordingFrames) return { ok: false, error: "already-recording" };
+  // nut-js captureRegion() отказывается захватывать отрицательные координаты ("x coordinate
+  // outside of display") — проверено вживую: это реальный случай для монитора, расположенного
+  // левее/выше основного в многомониторной раскладке. Таймлапс такой монитор снять не может —
+  // честно говорим об этом, а не тихо пишем 0 кадров.
+  const targetBounds = getRecordDisplay().bounds;
+  if (targetBounds.x < 0 || targetBounds.y < 0) {
+    return { ok: false, error: "Этот монитор нельзя записать в режиме «Таймлапс» — переключись на «Видео»" };
+  }
   recordingFrames = true;
   recordFrameCount = 0;
   recordStartedAt = Date.now();
   recordFrameDir = fs.mkdtempSync(path.join(os.tmpdir(), "multitool-rec-"));
   recordingLoop();
+  createRecordHud();
+  logActivity("🎥 Запись экрана начата (таймлапс)");
   return { ok: true };
 });
 
+// Видео-режим стартует/останавливается в рендерере (getDisplayMedia+MediaRecorder) — HUD и журнал
+// для него включаются отдельно этими двумя вызовами, а не через record:start/record:stop выше.
+ipcMain.handle("record:hudShow", () => {
+  createRecordHud();
+  logActivity("🎥 Запись экрана начата (видео)");
+});
+ipcMain.handle("record:hudHide", () => destroyRecordHud());
+
 ipcMain.handle("record:stop", async () => {
   if (!recordingFrames) return { ok: false, error: "not-recording" };
+  destroyRecordHud();
   recordingFrames = false;
   await sleep(RECORD_FRAME_INTERVAL_MS + 100); // дать текущему кадру дозахватиться перед кодированием
 
@@ -1306,13 +1523,25 @@ app.whenReady().then(async () => {
   registerShortcuts();
   refreshSeqMarkers();
   if (store.get("antiAfkEnabled")) startAntiAfk();
+  if (store.get("idleStartEnabled")) startIdleStartPolling();
+  checkForUpdate();
 
   // Позволяет рендереру звать navigator.mediaDevices.getDisplayMedia() без системного диалога
-  // выбора окна — сразу отдаём основной экран. Нужно для режима "видео" в записи экрана.
+  // выбора окна — сразу отдаём выбранный монитор (+ системный звук петлёй, если включено).
+  // Нужно для режима "видео" в записи экрана.
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => {
       desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
-        callback(sources[0] ? { video: sources[0] } : {});
+        // Сопоставляем по display_id, а не по индексу в массиве — screen.getAllDisplays() (тот, что
+        // показывает список мониторов в интерфейсе) и desktopCapturer.getSources() не гарантируют
+        // одинаковый порядок (проверено вживую: реально не совпадал на двухмониторной машине).
+        const wantedId = store.get("recordMonitorId");
+        const source = (wantedId != null && sources.find((s) => String(s.display_id) === String(wantedId))) || sources[0];
+        if (!source) {
+          callback({});
+          return;
+        }
+        callback({ video: source, audio: store.get("recordAudio") ? "loopback" : undefined });
       });
     },
     { useSystemPicker: false }

@@ -33,6 +33,7 @@
         <button class="nav-item" data-target="startup"><span class="nav-icon">🚀</span> Автозагрузка</button>
         <button class="nav-item" data-target="ocr"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
         <button class="nav-item" data-target="record"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="log"><span class="nav-icon">📋</span> Журнал</button>
         <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
       </div>
     </nav>
@@ -42,6 +43,7 @@
         <h1>МультиТул</h1>
         <p class="hint">Автоматизация под Windows: клики, макросы, бинды, триггер по цвету — всё в
           одном инструменте, не только автокликер.</p>
+        <p class="hint" id="updateNotice" hidden></p>
 
         <section id="proSection">
           <h2>👑 Pro <span title="Единый ключ работает и в этом приложении, и в браузерном расширении">ⓘ</span></h2>
@@ -434,6 +436,19 @@
             <p class="hint" id="recordModeHint"></p>
           </div>
           <div class="field">
+            <label for="recordMonitor">Монитор</label>
+            <select id="recordMonitor"></select>
+          </div>
+          <div class="field" id="recordAudioField" hidden>
+            <label class="switch-row">
+              <span>Записывать системный звук</span>
+              <span class="switch">
+                <input type="checkbox" id="recordAudio" />
+                <span class="switch-slider"></span>
+              </span>
+            </label>
+          </div>
+          <div class="field">
             <div class="row">
               <button id="recordStartBtn" class="secondary-btn">Начать запись</button>
               <button id="recordStopBtn" class="secondary-btn" disabled>Остановить</button>
@@ -478,6 +493,62 @@
           <div class="field">
             <label for="antiAfkIntervalSec">Интервал, сек</label>
             <input type="number" id="antiAfkIntervalSec" min="5" step="5" />
+          </div>
+        </section>
+
+        <section>
+          <h2>💤 Автостарт при простое <span class="pro-badge" id="idleStartBadge">Pro</span>
+            <span title="Обратное анти-АФК: запускает кликер САМ, когда компьютером никто не пользуется — для дальнего фарма, пока тебя нет за компьютером">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Запускать кликер после простоя</span>
+            <span class="switch">
+              <input type="checkbox" id="idleStartEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <label for="idleStartThresholdSec">Простой, сек</label>
+            <input type="number" id="idleStartThresholdSec" min="5" step="5" />
+          </div>
+        </section>
+
+        <section>
+          <h2>✈️ Уведомления в Telegram <span class="pro-badge" id="telegramBadge">Pro</span>
+            <span title="Сообщение в Telegram при старте/остановке кликера — чтобы знать, что происходит, пока не смотришь на экран">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Слать уведомления</span>
+            <span class="switch">
+              <input type="checkbox" id="telegramEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <label for="telegramBotToken">Токен бота</label>
+            <input type="text" id="telegramBotToken" placeholder="получи у @BotFather в Telegram" />
+          </div>
+          <div class="field">
+            <label for="telegramChatId">ID чата</label>
+            <input type="text" id="telegramChatId" placeholder="например: 123456789" />
+            <p class="hint">Напиши боту любое сообщение, потом открой
+              <code>https://api.telegram.org/bot&lt;токен&gt;/getUpdates</code> в браузере — там будет
+              твой <code>chat.id</code>.</p>
+          </div>
+          <div class="field">
+            <button id="telegramTestBtn" class="secondary-btn">Отправить тест</button>
+            <p class="hint" id="telegramTestStatus"></p>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="log" hidden>
+        <h1>📋 Журнал</h1>
+        <section>
+          <h2>📋 Журнал активности <span title="Последние значимые события — старт/стоп кликера и т.п. Хранятся только последние 100 записей">ⓘ</span></h2>
+          <div class="field">
+            <button id="logClearBtn" class="secondary-btn">Очистить</button>
+          </div>
+          <div class="field">
+            <div class="macro-list" id="logList"></div>
           </div>
         </section>
       </div>

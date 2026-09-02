@@ -32,6 +32,14 @@ const DEFAULT_SETTINGS = {
   scheduleIntervalMin: 30,
   textTrigger: { enabled: false, region: null, expectedText: "", lang: "rus+eng" }, // Pro: клик только когда в области экрана появляется заданный текст (OCR)
   recordMode: "timelapse", // 'timelapse' (надёжно, единицы fps) | 'video' (плавно, до 60 fps, экспериментально)
+  recordMonitorId: null, // id монитора для записи (screen.getAllDisplays()[i].id), null = основной
+  recordAudio: false, // Pro, только режим "видео": системный звук через loopback
+  idleStartEnabled: false, // "обратный анти-АФК" — запустить кликер автоматически после простоя
+  idleStartThresholdSec: 60,
+  telegramEnabled: false,
+  telegramBotToken: "",
+  telegramChatId: "",
+  activityLog: [], // [{ ts, message }, ...] — последние 100 записей, см. logActivity() в main.js
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).

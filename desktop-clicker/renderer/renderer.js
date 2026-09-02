@@ -157,6 +157,8 @@ function updateProUI() {
   document.getElementById("textTriggerBadge").hidden = proUnlocked;
   document.getElementById("recordBadge").hidden = proUnlocked;
   document.getElementById("recordTabBadge").hidden = proUnlocked;
+  document.getElementById("idleStartBadge").hidden = proUnlocked;
+  document.getElementById("telegramBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -188,6 +190,13 @@ function updateProUI() {
     "recordStartBtn",
     "recordOpenFolderBtn",
     "recordMode",
+    "recordAudio",
+    "idleStartEnabled",
+    "idleStartThresholdSec",
+    "telegramEnabled",
+    "telegramBotToken",
+    "telegramChatId",
+    "telegramTestBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -257,6 +266,15 @@ function loadIntoForm() {
   document.getElementById("scheduleRepeat").value = settings.scheduleRepeat || "once";
   document.getElementById("scheduleIntervalMin").value = settings.scheduleIntervalMin || 30;
   updateScheduleFieldsVisibility();
+
+  document.getElementById("idleStartEnabled").checked = !!settings.idleStartEnabled;
+  document.getElementById("idleStartThresholdSec").value = settings.idleStartThresholdSec || 60;
+
+  document.getElementById("telegramEnabled").checked = !!settings.telegramEnabled;
+  document.getElementById("telegramBotToken").value = settings.telegramBotToken || "";
+  document.getElementById("telegramChatId").value = settings.telegramChatId || "";
+
+  document.getElementById("recordAudio").checked = !!settings.recordAudio;
 
   updateActionVisibility();
   updateModeVisibility();
@@ -921,6 +939,38 @@ function bindHandlers() {
   document.getElementById("recordStartBtn").addEventListener("click", () => startScreenRecording());
   document.getElementById("recordStopBtn").addEventListener("click", () => stopScreenRecording());
   document.getElementById("recordOpenFolderBtn").addEventListener("click", () => window.api.openRecordingsFolder());
+  document.getElementById("recordMonitor").addEventListener("change", (e) => save({ recordMonitorId: parseInt(e.target.value, 10) }));
+  document.getElementById("recordAudio").addEventListener("change", (e) => save({ recordAudio: e.target.checked }));
+
+  // Автостарт при простое ("обратный анти-АФК")
+  document.getElementById("idleStartEnabled").addEventListener("change", (e) => {
+    if (!proUnlocked) return;
+    save({ idleStartEnabled: e.target.checked });
+  });
+  document.getElementById("idleStartThresholdSec").addEventListener("change", (e) => {
+    save({ idleStartThresholdSec: Math.max(5, parseInt(e.target.value, 10) || 60) });
+  });
+
+  // Уведомления в Telegram
+  document.getElementById("telegramEnabled").addEventListener("change", (e) => {
+    if (!proUnlocked) return;
+    save({ telegramEnabled: e.target.checked });
+  });
+  document.getElementById("telegramBotToken").addEventListener("change", (e) => save({ telegramBotToken: e.target.value.trim() }));
+  document.getElementById("telegramChatId").addEventListener("change", (e) => save({ telegramChatId: e.target.value.trim() }));
+  document.getElementById("telegramTestBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const status = document.getElementById("telegramTestStatus");
+    status.textContent = "Отправляем…";
+    const result = await window.api.testTelegram();
+    status.textContent = result.ok ? "Отправлено — проверь Telegram." : `Не удалось: ${result.error}`;
+  });
+
+  // Журнал активности
+  document.getElementById("logClearBtn").addEventListener("click", async () => {
+    const log = await window.api.clearActivityLog();
+    renderActivityLog(log);
+  });
 
   window.api.onStatus((status) => renderStatus(status));
   window.api.onNote((text) => {
@@ -935,6 +985,42 @@ function bindHandlers() {
     if (!document.getElementById("stopRecordBtn").disabled) {
       status.textContent = `Идёт запись… ${count} событий. Кликай и/или печатай, потом жми «Остановить» или ${settings.recordHotkey}.`;
     }
+  });
+  window.api.onActivityNew((entry) => {
+    activityLogCache = [...activityLogCache, entry].slice(-100);
+    renderActivityLog(activityLogCache);
+  });
+  window.api.onUpdateAvailable((info) => showUpdateNotice(info));
+}
+
+// --- Журнал активности ---
+
+let activityLogCache = [];
+
+function renderActivityLog(log) {
+  activityLogCache = log;
+  const list = document.getElementById("logList");
+  if (!log || log.length === 0) {
+    list.innerHTML = `<div class="empty-hint">📋 Пока пусто</div>`;
+    return;
+  }
+  list.innerHTML = [...log]
+    .reverse()
+    .map(
+      (e) =>
+        `<div class="macro-item"><span>${escapeHtml(new Date(e.ts).toLocaleString("ru-RU"))} — ${escapeHtml(e.message)}</span></div>`
+    )
+    .join("");
+}
+
+function showUpdateNotice(info) {
+  if (!info || !info.available) return;
+  const el = document.getElementById("updateNotice");
+  el.innerHTML = `Доступна новая версия <strong>v${escapeHtml(info.latestVersion)}</strong> — <a href="#" id="updateNoticeLink">скачать</a>.`;
+  el.hidden = false;
+  document.getElementById("updateNoticeLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    window.api.openExternal(info.url);
   });
 }
 
@@ -956,6 +1042,16 @@ function updateRecordModeHint() {
     mode === "video"
       ? "Плавное видео с реальным fps экрана. Экспериментально — если зависнет во время записи, переключись на «Таймлапс»."
       : "Надёжный режим: отдельные кадры собираются в .mp4 по остановке. Не плавное видео — 2-4 кадра в секунду.";
+  document.getElementById("recordAudioField").hidden = mode !== "video";
+}
+
+let recordMonitorsCache = [];
+
+async function populateRecordMonitors() {
+  const select = document.getElementById("recordMonitor");
+  recordMonitorsCache = await window.api.listRecordMonitors();
+  select.innerHTML = recordMonitorsCache.map((m) => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join("");
+  if (settings.recordMonitorId != null) select.value = settings.recordMonitorId;
 }
 
 let videoRecorder = null;
@@ -963,8 +1059,17 @@ let videoChunks = [];
 let videoStream = null;
 
 async function startVideoRecording(status) {
+  // Без явных width/height getDisplayMedia() на этой машине игнорировал выбранный монитор и всё
+  // равно отдавал разрешение другого экрана — проверено вживую. С явными ideal-размерами
+  // выбранного монитора отдаёт корректный поток именно с него.
+  const chosenMonitor = recordMonitorsCache.find((m) => m.id === settings.recordMonitorId);
+  const videoConstraints = { frameRate: 60 };
+  if (chosenMonitor) {
+    videoConstraints.width = { ideal: chosenMonitor.width };
+    videoConstraints.height = { ideal: chosenMonitor.height };
+  }
   try {
-    videoStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 } });
+    videoStream = await navigator.mediaDevices.getDisplayMedia({ video: videoConstraints, audio: !!settings.recordAudio });
   } catch (e) {
     status.textContent = `Не удалось начать запись видео: ${e.message}`;
     return false;
@@ -991,21 +1096,42 @@ function stopVideoRecording() {
   if (videoRecorder && videoRecorder.state !== "inactive") videoRecorder.stop();
 }
 
+function countdown(status, seconds) {
+  return new Promise((resolve) => {
+    const tick = (n) => {
+      if (n === 0) {
+        resolve();
+        return;
+      }
+      status.textContent = `Начинаем через ${n}…`;
+      setTimeout(() => tick(n - 1), 1000);
+    };
+    tick(seconds);
+  });
+}
+
 async function startScreenRecording() {
   if (!proUnlocked) return;
   const status = document.getElementById("recordScreenStatus");
+  const startBtn = document.getElementById("recordStartBtn");
+  startBtn.disabled = true;
+  await countdown(status, 3);
   const mode = settings.recordMode || "timelapse";
   if (mode === "video") {
     const ok = await startVideoRecording(status);
-    if (!ok) return;
+    if (!ok) {
+      startBtn.disabled = !proUnlocked;
+      return;
+    }
   } else {
     const result = await window.api.startRecordingScreen();
     if (!result.ok) {
       status.textContent = `Не удалось начать запись: ${result.error}`;
+      startBtn.disabled = !proUnlocked;
       return;
     }
   }
-  document.getElementById("recordStartBtn").disabled = true;
+  if (mode === "video") window.api.showRecordHud();
   document.getElementById("recordStopBtn").disabled = false;
   status.textContent = "Идёт запись…";
 }
@@ -1015,6 +1141,7 @@ async function stopScreenRecording() {
   document.getElementById("recordStopBtn").disabled = true;
   const mode = settings.recordMode || "timelapse";
   if (mode === "video") {
+    window.api.hideRecordHud();
     status.textContent = "Собираем видео…";
     stopVideoRecording(); // recordStartBtn разблокируется внутри onstop — сохранение асинхронное
   } else {
@@ -1041,6 +1168,10 @@ async function init() {
   renderStatus(status);
 
   document.getElementById("machineIdValue").textContent = await window.api.getMachineId();
+
+  populateRecordMonitors();
+  renderActivityLog(await window.api.getActivityLog());
+  showUpdateNotice(await window.api.getUpdateInfo());
 }
 
 init();
