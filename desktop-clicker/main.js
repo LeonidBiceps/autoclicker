@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification, session, desktopCapturer, powerMonitor } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, screen, nativeImage, dialog, shell, Notification, session, desktopCapturer, powerMonitor, clipboard } = require("electron");
 
 // Не даём запускать вторую копию — раньше при зависании и повторных запусках можно было
 // накопить несколько параллельных процессов в трее, и непонятно было, какое окно вообще
@@ -24,7 +24,8 @@ const os = require("os");
 const { execFile } = require("child_process");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
-const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow } = require("@nut-tree-fork/nut-js");
+const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow, imageResource, providerRegistry } = require("@nut-tree-fork/nut-js");
+const { JimpImageFinder } = require("./image-finder");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
 const Tesseract = require("tesseract.js");
@@ -125,6 +126,8 @@ async function performClick() {
 
 // --- Color trigger (click only when a watched pixel matches a target color, Pro) ---
 
+let colorTriggerLastMatch = false;
+
 async function colorConditionMet(settings) {
   const trigger = settings.colorTrigger;
   if (!proUnlocked || !trigger || !trigger.enabled || !trigger.point || !trigger.color) return true;
@@ -134,7 +137,12 @@ async function colorConditionMet(settings) {
     const dg = sample.G - trigger.color.g;
     const db = sample.B - trigger.color.b;
     const distance = Math.sqrt(dr * dr + dg * dg + db * db);
-    return distance <= trigger.tolerance;
+    const matched = distance <= trigger.tolerance;
+    if (matched && !colorTriggerLastMatch && store.get("telegramOnTrigger")) {
+      notifyTelegram("🎯 Триггер по цвету сработал");
+    }
+    colorTriggerLastMatch = matched;
+    return matched;
   } catch (e) {
     return true; // не блокируем клики, если чтение экрана не удалось
   }
@@ -171,7 +179,11 @@ async function pollTextTrigger(trigger) {
     const result = await runOcr(trigger.region, trigger.lang || "rus+eng");
     if (result.ok) {
       const text = (result.text || "").toLowerCase();
-      textTriggerLastMatch = text.includes((trigger.expectedText || "").toLowerCase());
+      const matched = text.includes((trigger.expectedText || "").toLowerCase());
+      if (matched && !textTriggerLastMatch && store.get("telegramOnTrigger")) {
+        notifyTelegram("🎯 Триггер по тексту сработал");
+      }
+      textTriggerLastMatch = matched;
     }
     // при неудачном OCR намеренно не трогаем textTriggerLastMatch — единичный сбой не должен
     // мгновенно перекрыть клики, которые до этого честно шли
@@ -196,6 +208,61 @@ function textConditionMet(settings) {
   const trigger = settings.textTrigger;
   if (!proUnlocked || !trigger || !trigger.enabled || !trigger.region || !trigger.expectedText) return true;
   return textTriggerLastMatch;
+}
+
+// --- "Триггер по картинке" — клик только когда на экране найден сохранённый образец (Pro) ---
+//
+// nut-js сам по себе НЕ ищет картинку на экране "из коробки" — начиная с v4 это вынесено в
+// отдельный ImageFinder-провайдер, а готового провайдера ни под этот форк (@nut-tree-fork/*),
+// ни под оригинальный (@nut-tree/*) на npm нет. Поэтому используем свой матчер на jimp без
+// нативных зависимостей (см. image-finder.js), зарегистрированный через providerRegistry в
+// app.whenReady(). Как и текстовый триггер — опрашивается редко, в фоне, не на каждый тик
+// клика (поиск по шаблону не бесплатный).
+
+function getImageTemplatesDir() {
+  const dir = path.join(app.getPath("userData"), "image-templates");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+let imageTriggerLastMatch = true;
+let imageTriggerPolling = false;
+let imageTriggerTimer = null;
+
+async function pollImageTrigger(trigger) {
+  if (imageTriggerPolling) return;
+  imageTriggerPolling = true;
+  try {
+    await nutScreen.find(imageResource(trigger.templateFile), { confidence: trigger.confidence || 0.9 });
+    if (!imageTriggerLastMatch && store.get("telegramOnTrigger")) {
+      notifyTelegram("🎯 Триггер по картинке сработал");
+    }
+    imageTriggerLastMatch = true;
+  } catch (e) {
+    // find() отклоняет промис, если картинка не найдена на экране — это ожидаемый штатный случай,
+    // не ошибка, поэтому здесь ничего не логируем
+    imageTriggerLastMatch = false;
+  } finally {
+    imageTriggerPolling = false;
+  }
+}
+
+function startImageTriggerPolling(trigger) {
+  stopImageTriggerPolling();
+  imageTriggerLastMatch = false;
+  pollImageTrigger(trigger);
+  imageTriggerTimer = setInterval(() => pollImageTrigger(trigger), 1500);
+}
+
+function stopImageTriggerPolling() {
+  if (imageTriggerTimer) clearInterval(imageTriggerTimer);
+  imageTriggerTimer = null;
+}
+
+function imageConditionMet(settings) {
+  const trigger = settings.imageTrigger;
+  if (!proUnlocked || !trigger || !trigger.enabled || !trigger.templateFile) return true;
+  return imageTriggerLastMatch;
 }
 
 function checkAutoStop(settings) {
@@ -223,7 +290,10 @@ function scheduleNext() {
   timerId = setTimeout(async () => {
     try {
       const canClick =
-        (await windowFocusConditionMet(settings)) && (await colorConditionMet(settings)) && textConditionMet(settings);
+        (await windowFocusConditionMet(settings)) &&
+        (await colorConditionMet(settings)) &&
+        textConditionMet(settings) &&
+        imageConditionMet(settings);
       if (canClick) {
         await performClick();
         sessionClicks++;
@@ -259,6 +329,9 @@ function startClicking() {
   if (proUnlocked && settings.textTrigger && settings.textTrigger.enabled && settings.textTrigger.region) {
     startTextTriggerPolling(settings.textTrigger);
   }
+  if (proUnlocked && settings.imageTrigger && settings.imageTrigger.enabled && settings.imageTrigger.templateFile) {
+    startImageTriggerPolling(settings.imageTrigger);
+  }
   scheduleNext();
   logActivity("🟢 Кликер запущен");
   notifyTelegram("🟢 Кликер запущен");
@@ -268,6 +341,7 @@ function stopClicking(note) {
   running = false;
   clearTimeout(timerId);
   stopTextTriggerPolling();
+  stopImageTriggerPolling();
   sendStatus();
   destroyHud();
   if (note) sendNote(note);
@@ -433,6 +507,43 @@ async function notifyTelegram(text) {
   } catch (e) {
     // нет интернета/неверный токен — не мешаем автоматизации работать дальше
   }
+}
+
+// --- Менеджер буфера обмена: история скопированного текста ---
+//
+// Electron не даёт подписаться на "буфер обмена изменился" напрямую — опрашиваем clipboard.readText()
+// по таймеру (как и везде в этом файле, где нет события от ОС) и добавляем в историю только при
+// реальном изменении текста, без дублей подряд.
+
+let clipboardPollTimer = null;
+let lastClipboardText = null;
+
+function clipboardPollTick() {
+  try {
+    const text = clipboard.readText();
+    if (text && text !== lastClipboardText) {
+      lastClipboardText = text;
+      const history = [...(store.get("clipboardHistory") || []), { ts: Date.now(), text }].slice(-50);
+      store.set({ clipboardHistory: history });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("clipboard:new", { ts: Date.now(), text });
+      }
+    }
+  } catch (e) {
+    // буфер обмена временно занят другим процессом — пропускаем тик, не страшно
+  }
+  clipboardPollTimer = setTimeout(clipboardPollTick, 1000);
+}
+
+function startClipboardPolling() {
+  if (clipboardPollTimer) return;
+  lastClipboardText = clipboard.readText();
+  clipboardPollTimer = setTimeout(clipboardPollTick, 1000);
+}
+
+function stopClipboardPolling() {
+  if (clipboardPollTimer) clearTimeout(clipboardPollTimer);
+  clipboardPollTimer = null;
 }
 
 // --- Point picking overlay (multi-monitor) ---
@@ -711,8 +822,12 @@ function stopRecordingInternal() {
 // Макросы, записанные до этой версии, хранились как голый массив кликов — приводим к единой форме,
 // чтобы не потерять уже сохранённые у пользователей макросы при обновлении.
 function normalizeMacro(value) {
-  if (Array.isArray(value)) return { events: value, repeat: 1 };
-  return { events: (value && value.events) || [], repeat: Math.max(1, Math.min(50, (value && value.repeat) || 1)) };
+  if (Array.isArray(value)) return { events: value, repeat: 1, hotkey: "" };
+  return {
+    events: (value && value.events) || [],
+    repeat: Math.max(1, Math.min(50, (value && value.repeat) || 1)),
+    hotkey: (value && value.hotkey) || "",
+  };
 }
 
 async function playMacro(events, repeat = 1) {
@@ -1022,7 +1137,7 @@ function registerShortcuts() {
   }
   if (settings.panicHotkey) {
     try {
-      globalShortcut.register(settings.panicHotkey, () => stopClicking("Остановлено аварийным хоткеем"));
+      globalShortcut.register(settings.panicHotkey, () => panicStopAll());
     } catch (e) {
       console.error("Не удалось зарегистрировать аварийный хоткей:", e.message);
     }
@@ -1052,6 +1167,28 @@ function registerShortcuts() {
         console.error(`Не удалось зарегистрировать бинд "${bind.hotkey}":`, e.message);
       }
     }
+
+    for (const [name, raw] of Object.entries(settings.macros || {})) {
+      const { events, repeat, hotkey } = normalizeMacro(raw);
+      if (!hotkey) continue;
+      try {
+        globalShortcut.register(hotkey, () => playMacro(events, repeat));
+      } catch (e) {
+        console.error(`Не удалось зарегистрировать хоткей макроса "${name}":`, e.message);
+      }
+    }
+  }
+}
+
+// --- Аварийный стоп: гасит и кликер, и запись экрана разом ---
+//
+// Оба режима записи (таймлапс и видео) в итоге останавливаются через renderer.js'ную
+// stopScreenRecording() — она уже умеет и то, и другое; здесь просто просим рендерер её позвать,
+// как по кнопке "Остановить", а не дублируем логику остановки записи в main-процессе.
+function panicStopAll() {
+  stopClicking("Остановлено аварийным хоткеем");
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("panic:stopRecording");
   }
 }
 
@@ -1079,6 +1216,10 @@ ipcMain.handle("settings:set", (event, partial) => {
     if (partial.idleStartEnabled) startIdleStartPolling();
     else stopIdleStartPolling();
   }
+  if ("clipboardHistoryEnabled" in partial) {
+    if (partial.clipboardHistoryEnabled) startClipboardPolling();
+    else stopClipboardPolling();
+  }
   return store.getAll();
 });
 
@@ -1091,6 +1232,7 @@ ipcMain.handle("license:verify", async (event, key) => {
 ipcMain.handle("system:getMachineId", () => getMachineId());
 
 ipcMain.handle("update:get", () => latestUpdateInfo);
+
 
 ipcMain.handle("record:listMonitors", () => {
   const primaryId = screen.getPrimaryDisplay().id;
@@ -1125,6 +1267,18 @@ ipcMain.handle("activity:get", () => store.get("activityLog") || []);
 ipcMain.handle("activity:clear", () => {
   store.set({ activityLog: [] });
   return [];
+});
+
+ipcMain.handle("clipboard:getHistory", () => store.get("clipboardHistory") || []);
+
+ipcMain.handle("clipboard:clear", () => {
+  store.set({ clipboardHistory: [] });
+  return [];
+});
+
+ipcMain.handle("clipboard:copy", (event, text) => {
+  lastClipboardText = text; // не даём собственной же вставке снова попасть в историю как "новую"
+  clipboard.writeText(text);
 });
 
 // Пауза перед считыванием заголовка: если сделать это сразу, "активным окном" всегда будет само
@@ -1230,10 +1384,11 @@ ipcMain.handle("macro:stopRecording", () => {
   return { events };
 });
 
-ipcMain.handle("macro:save", (event, name, events, repeat) => {
+ipcMain.handle("macro:save", (event, name, events, repeat, hotkey) => {
   if (!name || !events || !events.length) return store.get("macros");
-  const macros = { ...store.get("macros"), [name]: { events, repeat: Math.max(1, Math.min(50, repeat || 1)) } };
+  const macros = { ...store.get("macros"), [name]: { events, repeat: Math.max(1, Math.min(50, repeat || 1)), hotkey: hotkey || "" } };
   store.set({ macros });
+  registerShortcuts();
   return macros;
 });
 
@@ -1268,18 +1423,21 @@ ipcMain.handle("macro:delete", (event, name) => {
   const macros = { ...store.get("macros") };
   delete macros[name];
   store.set({ macros });
+  registerShortcuts();
   return macros;
 });
 
-ipcMain.handle("macro:update", (event, oldName, newName, repeat) => {
+ipcMain.handle("macro:update", (event, oldName, newName, repeat, hotkey) => {
   const macros = { ...store.get("macros") };
   const raw = macros[oldName];
   if (!raw) return macros;
   const normalized = normalizeMacro(raw);
   normalized.repeat = Math.max(1, Math.min(50, repeat || 1));
+  normalized.hotkey = hotkey || "";
   delete macros[oldName];
   macros[newName || oldName] = normalized;
   store.set({ macros });
+  registerShortcuts();
   return macros;
 });
 
@@ -1302,6 +1460,22 @@ ipcMain.handle("textTrigger:pickRegion", async () => {
   const region = await pickRegion();
   if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
   return { ok: true, region };
+});
+
+// Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою
+// папку, дальше nut-js screen.find() ищет её на экране целиком.
+ipcMain.handle("imageTrigger:pickTemplate", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  const dir = getImageTemplatesDir();
+  const baseName = `template-${Date.now()}`;
+  try {
+    await nutScreen.captureRegion(baseName, new Region(region.x, region.y, region.width, region.height), FileType.PNG, dir);
+    return { ok: true, templateFile: `${baseName}.png`, width: region.width, height: region.height };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // --- Запись экрана (Pro) ---
@@ -1524,6 +1698,9 @@ app.whenReady().then(async () => {
   refreshSeqMarkers();
   if (store.get("antiAfkEnabled")) startAntiAfk();
   if (store.get("idleStartEnabled")) startIdleStartPolling();
+  if (store.get("clipboardHistoryEnabled")) startClipboardPolling();
+  nutScreen.config.resourceDirectory = getImageTemplatesDir(); // для триггера по картинке — imageResource() ищет файлы относительно этой папки
+  providerRegistry.registerImageFinder(new JimpImageFinder()); // в nut-js нет готового ImageFinder — используем свой (см. image-finder.js)
   checkForUpdate();
 
   // Позволяет рендереру звать navigator.mediaDevices.getDisplayMedia() без системного диалога

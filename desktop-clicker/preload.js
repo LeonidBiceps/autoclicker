@@ -19,10 +19,10 @@ contextBridge.exposeInMainWorld("api", {
 
   startRecording: () => ipcRenderer.invoke("macro:startRecording"),
   stopRecording: () => ipcRenderer.invoke("macro:stopRecording"),
-  saveMacro: (name, events, repeat) => ipcRenderer.invoke("macro:save", name, events, repeat),
+  saveMacro: (name, events, repeat, hotkey) => ipcRenderer.invoke("macro:save", name, events, repeat, hotkey),
   playMacro: (name) => ipcRenderer.invoke("macro:play", name),
   deleteMacro: (name) => ipcRenderer.invoke("macro:delete", name),
-  updateMacro: (oldName, newName, repeat) => ipcRenderer.invoke("macro:update", oldName, newName, repeat),
+  updateMacro: (oldName, newName, repeat, hotkey) => ipcRenderer.invoke("macro:update", oldName, newName, repeat, hotkey),
   playMacroChain: (names) => ipcRenderer.invoke("macro:playChain", names),
 
   exportSettings: () => ipcRenderer.invoke("settings:export"),
@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("api", {
   captureAndRecognizeText: () => ipcRenderer.invoke("ocr:capture"),
   copyText: (text) => clipboard.writeText(text),
   pickTextTriggerRegion: () => ipcRenderer.invoke("textTrigger:pickRegion"),
+  pickImageTriggerTemplate: () => ipcRenderer.invoke("imageTrigger:pickTemplate"),
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
@@ -48,10 +49,16 @@ contextBridge.exposeInMainWorld("api", {
   getActivityLog: () => ipcRenderer.invoke("activity:get"),
   clearActivityLog: () => ipcRenderer.invoke("activity:clear"),
 
+  getClipboardHistory: () => ipcRenderer.invoke("clipboard:getHistory"),
+  clearClipboardHistory: () => ipcRenderer.invoke("clipboard:clear"),
+  copyFromClipboardHistory: (text) => ipcRenderer.invoke("clipboard:copy", text),
+
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),
   onRecordingStopped: (callback) => ipcRenderer.on("recording:stopped", (_e, events) => callback(events)),
   onRecordingProgress: (callback) => ipcRenderer.on("recording:progress", (_e, count) => callback(count)),
   onActivityNew: (callback) => ipcRenderer.on("activity:new", (_e, entry) => callback(entry)),
   onUpdateAvailable: (callback) => ipcRenderer.on("update:available", (_e, info) => callback(info)),
+  onClipboardNew: (callback) => ipcRenderer.on("clipboard:new", (_e, entry) => callback(entry)),
+  onPanicStopRecording: (callback) => ipcRenderer.on("panic:stopRecording", () => callback()),
 });

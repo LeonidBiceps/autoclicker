@@ -34,6 +34,7 @@
         <button class="nav-item" data-target="ocr"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
         <button class="nav-item" data-target="record"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
         <button class="nav-item" data-target="log"><span class="nav-icon">📋</span> Журнал</button>
+        <button class="nav-item" data-target="clipboard"><span class="nav-icon">📎</span> Буфер обмена</button>
         <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
       </div>
     </nav>
@@ -223,6 +224,31 @@
           <div class="field">
             <label for="textTriggerExpected">Ожидаемый текст (часть строки)</label>
             <input type="text" id="textTriggerExpected" placeholder="например: Готово" />
+          </div>
+        </section>
+
+        <section id="imageTriggerSection">
+          <h2>🖼 Триггер по картинке <span class="pro-badge" id="imageTriggerBadge">Pro</span>
+            <span title="Кликает только когда на экране найдена сохранённая картинка-образец (иконка, кнопка) — точнее цвета, если у элемента сложная текстура">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Кликать только при совпадении картинки</span>
+            <span class="switch">
+              <input type="checkbox" id="imageTriggerEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <div class="row">
+              <button id="imageTriggerPickBtn" class="secondary-btn">Выделить образец</button>
+            </div>
+            <p class="hint" id="imageTriggerHint">Образец не выбран.</p>
+          </div>
+          <div class="field">
+            <label for="imageTriggerConfidence" title="Насколько точно должно совпадать — меньше значение допускает больше отличий (тени, сжатие)">Точность совпадения</label>
+            <div class="slider-row">
+              <input type="range" id="imageTriggerConfidenceSlider" min="50" max="100" step="1" />
+              <input type="number" id="imageTriggerConfidence" min="50" max="100" step="1" class="slider-number" />
+            </div>
           </div>
         </section>
       </div>
@@ -533,6 +559,13 @@
               <code>https://api.telegram.org/bot&lt;токен&gt;/getUpdates</code> в браузере — там будет
               твой <code>chat.id</code>.</p>
           </div>
+          <label class="switch-row">
+            <span>Слать и при срабатывании триггера (цвет/текст/картинка)</span>
+            <span class="switch">
+              <input type="checkbox" id="telegramOnTrigger" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
           <div class="field">
             <button id="telegramTestBtn" class="secondary-btn">Отправить тест</button>
             <p class="hint" id="telegramTestStatus"></p>
@@ -553,6 +586,26 @@
         </section>
       </div>
 
+      <div class="tab-panel" data-panel="clipboard" hidden>
+        <h1>📎 Буфер обмена</h1>
+        <section>
+          <h2>📎 История буфера обмена <span title="Последние скопированные тексты — последние 50 записей">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Запоминать историю</span>
+            <span class="switch">
+              <input type="checkbox" id="clipboardHistoryEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <button id="clipboardClearBtn" class="secondary-btn">Очистить</button>
+          </div>
+          <div class="field">
+            <div class="macro-list" id="clipboardList"></div>
+          </div>
+        </section>
+      </div>
+
       <div class="save-status" id="saveStatus"></div>
     </main>
   </div>
@@ -568,6 +621,10 @@
       <div class="field">
         <label for="macroSaveRepeat">Повторов подряд <span title="Сколько раз подряд воспроизвести весь макрос за один запуск">ⓘ</span></label>
         <input type="number" id="macroSaveRepeat" min="1" max="50" value="1" />
+      </div>
+      <div class="field">
+        <label for="macroSaveHotkey">Хоткей (необязательно) <span title="Глобальный хоткей, который сразу играет этот макрос — работает в любом окне Windows">ⓘ</span></label>
+        <input type="text" id="macroSaveHotkey" maxlength="20" placeholder="например: Ctrl+Alt+1" />
       </div>
       <div class="row">
         <button id="macroSaveConfirmBtn" class="primary-btn">Сохранить</button>

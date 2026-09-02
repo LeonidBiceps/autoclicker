@@ -40,6 +40,10 @@ const DEFAULT_SETTINGS = {
   telegramBotToken: "",
   telegramChatId: "",
   activityLog: [], // [{ ts, message }, ...] — последние 100 записей, см. logActivity() в main.js
+  imageTrigger: { enabled: false, templateFile: null, confidence: 0.9, width: 0, height: 0 }, // Pro: клик только когда на экране найдена сохранённая картинка-образец
+  telegramOnTrigger: false, // слать уведомление и при срабатывании цвет-/текст-/картинка-триггера, не только старт/стоп кликера
+  clipboardHistoryEnabled: true,
+  clipboardHistory: [], // [{ ts, text }, ...] — последние 50 записей
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).
@@ -58,6 +62,7 @@ const PROFILE_FIELDS = [
   "sequencePoints",
   "targetWindowTitle",
   "textTrigger",
+  "imageTrigger",
 ];
 
 class Store {

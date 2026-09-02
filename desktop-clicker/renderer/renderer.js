@@ -159,6 +159,7 @@ function updateProUI() {
   document.getElementById("recordTabBadge").hidden = proUnlocked;
   document.getElementById("idleStartBadge").hidden = proUnlocked;
   document.getElementById("telegramBadge").hidden = proUnlocked;
+  document.getElementById("imageTriggerBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
     "scheduleTime",
@@ -197,6 +198,11 @@ function updateProUI() {
     "telegramBotToken",
     "telegramChatId",
     "telegramTestBtn",
+    "telegramOnTrigger",
+    "imageTriggerEnabled",
+    "imageTriggerPickBtn",
+    "imageTriggerConfidenceSlider",
+    "imageTriggerConfidence",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -259,6 +265,7 @@ function loadIntoForm() {
   updateTargetWindowHint();
 
   renderTextTrigger();
+  renderImageTrigger();
 
   document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
   document.getElementById("antiAfkIntervalSec").value = settings.antiAfkIntervalSec || 45;
@@ -273,6 +280,9 @@ function loadIntoForm() {
   document.getElementById("telegramEnabled").checked = !!settings.telegramEnabled;
   document.getElementById("telegramBotToken").value = settings.telegramBotToken || "";
   document.getElementById("telegramChatId").value = settings.telegramChatId || "";
+  document.getElementById("telegramOnTrigger").checked = !!settings.telegramOnTrigger;
+
+  document.getElementById("clipboardHistoryEnabled").checked = settings.clipboardHistoryEnabled !== false;
 
   document.getElementById("recordAudio").checked = !!settings.recordAudio;
 
@@ -295,6 +305,16 @@ function renderTextTrigger() {
   hint.textContent = trigger.region
     ? `Область: ${trigger.region.width}×${trigger.region.height} в точке ${trigger.region.x}, ${trigger.region.y}`
     : "Область не выбрана.";
+}
+
+function renderImageTrigger() {
+  const trigger = settings.imageTrigger || {};
+  document.getElementById("imageTriggerEnabled").checked = !!trigger.enabled;
+  const confidence = Math.round((trigger.confidence || 0.9) * 100);
+  document.getElementById("imageTriggerConfidenceSlider").value = confidence;
+  document.getElementById("imageTriggerConfidence").value = confidence;
+  const hint = document.getElementById("imageTriggerHint");
+  hint.textContent = trigger.templateFile ? `Образец: ${trigger.width}×${trigger.height}` : "Образец не выбран.";
 }
 
 function updateScheduleFieldsVisibility() {
@@ -340,8 +360,12 @@ function renderProfileSelect() {
 // Старые макросы хранились как голый массив кликов — main.js хранит их так же, если их ни разу
 // не пересохраняли через новую версию, поэтому рендер тоже должен понимать обе формы.
 function normalizeMacroClient(value) {
-  if (Array.isArray(value)) return { events: value, repeat: 1 };
-  return { events: (value && value.events) || [], repeat: (value && value.repeat) || 1 };
+  if (Array.isArray(value)) return { events: value, repeat: 1, hotkey: "" };
+  return {
+    events: (value && value.events) || [],
+    repeat: (value && value.repeat) || 1,
+    hotkey: (value && value.hotkey) || "",
+  };
 }
 
 function describeMacroEvents(events) {
@@ -362,12 +386,13 @@ function renderMacroList() {
   }
   list.innerHTML = names
     .map((n) => {
-      const { events, repeat } = normalizeMacroClient(settings.macros[n]);
+      const { events, repeat, hotkey } = normalizeMacroClient(settings.macros[n]);
       const repeatSuffix = repeat > 1 ? ` × ${repeat}` : "";
+      const hotkeySuffix = hotkey ? ` · <code>${escapeHtml(hotkey)}</code>` : "";
       return `<div class="macro-item">
         <label class="macro-chain-check">
           <input type="checkbox" class="macro-chain-checkbox" data-name="${escapeHtml(n)}" />
-          <span>${escapeHtml(n)} (${describeMacroEvents(events)}${repeatSuffix})</span>
+          <span>${escapeHtml(n)} (${describeMacroEvents(events)}${repeatSuffix})${hotkeySuffix}</span>
         </label>
         <div class="item-actions">
           <button class="play-btn" data-name="${escapeHtml(n)}">▶ Играть</button>
@@ -468,12 +493,13 @@ function openMacroSaveModal(events) {
   const nameInput = document.getElementById("macroSaveName");
   nameInput.value = "";
   document.getElementById("macroSaveRepeat").value = "1";
+  document.getElementById("macroSaveHotkey").value = "";
   document.getElementById("macroSaveOverlay").hidden = false;
   nameInput.focus();
 }
 
 function openMacroEditModal(name) {
-  const { events, repeat } = normalizeMacroClient(settings.macros[name]);
+  const { events, repeat, hotkey } = normalizeMacroClient(settings.macros[name]);
   macroModalMode = "edit";
   editingMacroName = name;
   pendingMacroEvents = null;
@@ -482,6 +508,7 @@ function openMacroEditModal(name) {
   const nameInput = document.getElementById("macroSaveName");
   nameInput.value = name;
   document.getElementById("macroSaveRepeat").value = String(repeat);
+  document.getElementById("macroSaveHotkey").value = hotkey || "";
   document.getElementById("macroSaveOverlay").hidden = false;
   nameInput.focus();
 }
@@ -666,6 +693,38 @@ function bindHandlers() {
     await save({ textTrigger: { ...settings.textTrigger, expectedText: e.target.value } });
   });
 
+  // "Триггер по картинке"
+  document.getElementById("imageTriggerEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ imageTrigger: { ...settings.imageTrigger, enabled: e.target.checked } });
+  });
+  document.getElementById("imageTriggerPickBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickImageTriggerTemplate();
+    if (result.ok) {
+      await save({
+        imageTrigger: {
+          ...settings.imageTrigger,
+          templateFile: result.templateFile,
+          width: result.width,
+          height: result.height,
+        },
+      });
+      renderImageTrigger();
+    }
+  });
+  document.getElementById("imageTriggerConfidenceSlider").addEventListener("input", (e) => {
+    document.getElementById("imageTriggerConfidence").value = e.target.value;
+  });
+  const saveImageConfidence = async (v) => {
+    const confidence = Math.max(50, Math.min(100, parseInt(v, 10) || 90)) / 100;
+    document.getElementById("imageTriggerConfidenceSlider").value = Math.round(confidence * 100);
+    document.getElementById("imageTriggerConfidence").value = Math.round(confidence * 100);
+    await save({ imageTrigger: { ...settings.imageTrigger, confidence } });
+  };
+  document.getElementById("imageTriggerConfidenceSlider").addEventListener("change", (e) => saveImageConfidence(e.target.value));
+  document.getElementById("imageTriggerConfidence").addEventListener("change", (e) => saveImageConfidence(e.target.value));
+
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
     await save({ antiAfkEnabled: e.target.checked });
@@ -816,13 +875,14 @@ function bindHandlers() {
   document.getElementById("macroSaveConfirmBtn").addEventListener("click", async () => {
     const name = document.getElementById("macroSaveName").value.trim();
     const repeat = Math.max(1, Math.min(50, parseInt(document.getElementById("macroSaveRepeat").value, 10) || 1));
+    const hotkey = document.getElementById("macroSaveHotkey").value.trim();
     if (!name) return;
 
     if (macroModalMode === "edit") {
       const oldName = editingMacroName;
       closeMacroSaveModal();
       try {
-        settings.macros = await window.api.updateMacro(oldName, name, repeat);
+        settings.macros = await window.api.updateMacro(oldName, name, repeat, hotkey);
         renderMacroList();
         document.getElementById("recordStatus").textContent = `Изменено: «${name}».`;
       } catch (e) {
@@ -835,7 +895,7 @@ function bindHandlers() {
     const events = pendingMacroEvents;
     closeMacroSaveModal();
     try {
-      settings.macros = await window.api.saveMacro(name, events, repeat);
+      settings.macros = await window.api.saveMacro(name, events, repeat, hotkey);
       renderMacroList();
       document.getElementById("recordStatus").textContent = `Сохранено: «${name}».`;
     } catch (e) {
@@ -965,11 +1025,24 @@ function bindHandlers() {
     const result = await window.api.testTelegram();
     status.textContent = result.ok ? "Отправлено — проверь Telegram." : `Не удалось: ${result.error}`;
   });
+  document.getElementById("telegramOnTrigger").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ telegramOnTrigger: e.target.checked });
+  });
 
   // Журнал активности
   document.getElementById("logClearBtn").addEventListener("click", async () => {
     const log = await window.api.clearActivityLog();
     renderActivityLog(log);
+  });
+
+  // Буфер обмена
+  document.getElementById("clipboardHistoryEnabled").addEventListener("change", async (e) => {
+    await save({ clipboardHistoryEnabled: e.target.checked });
+  });
+  document.getElementById("clipboardClearBtn").addEventListener("click", async () => {
+    const list = await window.api.clearClipboardHistory();
+    renderClipboardList(list);
   });
 
   window.api.onStatus((status) => renderStatus(status));
@@ -991,6 +1064,13 @@ function bindHandlers() {
     renderActivityLog(activityLogCache);
   });
   window.api.onUpdateAvailable((info) => showUpdateNotice(info));
+  window.api.onClipboardNew((entry) => {
+    clipboardHistoryCache = [...clipboardHistoryCache, entry].slice(-50);
+    renderClipboardList(clipboardHistoryCache);
+  });
+  window.api.onPanicStopRecording(() => {
+    if (!document.getElementById("recordStopBtn").disabled) stopScreenRecording();
+  });
 }
 
 // --- Журнал активности ---
@@ -1011,6 +1091,35 @@ function renderActivityLog(log) {
         `<div class="macro-item"><span>${escapeHtml(new Date(e.ts).toLocaleString("ru-RU"))} — ${escapeHtml(e.message)}</span></div>`
     )
     .join("");
+}
+
+// --- Буфер обмена ---
+
+let clipboardHistoryCache = [];
+
+function renderClipboardList(history) {
+  clipboardHistoryCache = history;
+  const list = document.getElementById("clipboardList");
+  if (!history || history.length === 0) {
+    list.innerHTML = `<div class="empty-hint">📎 Пока пусто</div>`;
+    return;
+  }
+  list.innerHTML = [...history]
+    .reverse()
+    .map((e, i) => {
+      const preview = e.text.length > 80 ? `${e.text.slice(0, 80)}…` : e.text;
+      return `<div class="macro-item">
+        <span title="${escapeHtml(e.text)}">${escapeHtml(preview)}</span>
+        <div class="item-actions">
+          <button class="clipboard-copy-btn" data-i="${i}">Копировать</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+  const reversed = [...history].reverse();
+  list.querySelectorAll(".clipboard-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", () => window.api.copyFromClipboardHistory(reversed[Number(btn.dataset.i)].text));
+  });
 }
 
 function showUpdateNotice(info) {
@@ -1171,6 +1280,7 @@ async function init() {
 
   populateRecordMonitors();
   renderActivityLog(await window.api.getActivityLog());
+  renderClipboardList(await window.api.getClipboardHistory());
   showUpdateNotice(await window.api.getUpdateInfo());
 }
 
