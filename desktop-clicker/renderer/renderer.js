@@ -15,6 +15,7 @@ const PROFILE_FIELDS = [
 
 let settings = {};
 let proUnlocked = false;
+let licenseExpiresAt = null;
 
 function fields() {
   return {
@@ -71,6 +72,29 @@ function initNavigation() {
     });
   });
   showPanel("home");
+
+  document.getElementById("navSearch").addEventListener("input", (e) => filterNav(e.target.value));
+}
+
+// Ищет и по подписи пункта, и по data-keywords (перечисление терминов со страницы — например,
+// "триггер по цвету" находится по запросу "цвет", хотя в названии пункта меню "Клик" его нет) —
+// иначе при таком количестве вкладок сложно сходу вспомнить, где именно спрятана нужная настройка.
+function filterNav(query) {
+  const q = query.trim().toLowerCase();
+  const items = document.querySelectorAll("#sidebarNav .nav-item");
+  let anyVisible = false;
+  items.forEach((item) => {
+    const label = item.textContent.toLowerCase();
+    const keywords = (item.dataset.keywords || "").toLowerCase();
+    const match = !q || label.includes(q) || keywords.includes(q);
+    item.hidden = !match;
+    if (match) anyVisible = true;
+  });
+  document.querySelectorAll("#sidebarNav .nav-group-label").forEach((label) => {
+    const groupItems = document.querySelectorAll(`#sidebarNav .nav-item[data-group="${label.dataset.group}"]`);
+    label.hidden = ![...groupItems].some((i) => !i.hidden);
+  });
+  document.getElementById("navEmptyHint").hidden = anyVisible;
 }
 
 // --- Sliders (range <-> number two-way sync) ---
@@ -212,9 +236,16 @@ function updateProUI() {
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
   const proStatus = document.getElementById("proStatus");
-  proStatus.textContent = proUnlocked
-    ? "Pro активирован — без лимита кликов, разброс позиции, триггер по цвету, дождаться текста, последовательность точек, макросы, бинды, профили, расписание, текст с экрана, запись экрана."
-    : "Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.";
+  if (proUnlocked) {
+    const untilText = licenseExpiresAt
+      ? ` Действует до ${new Date(licenseExpiresAt).toLocaleDateString("ru-RU")}.`
+      : "";
+    proStatus.textContent =
+      "Pro активирован — без лимита кликов, разброс позиции, триггер по цвету, дождаться текста, последовательность точек, макросы, бинды, профили, расписание, текст с экрана, запись экрана." +
+      untilText;
+  } else {
+    proStatus.textContent = "Бесплатная версия: лимит 5000 кликов за запуск, курсор/одна точка.";
+  }
 }
 
 let statusHideTimer = null;
@@ -790,6 +821,7 @@ function bindHandlers() {
     message.textContent = "Проверяем…";
     const result = await window.api.verifyLicense(key);
     proUnlocked = result.valid;
+    licenseExpiresAt = result.valid && result.payload ? result.payload.expiresAt : null;
     updateProUI();
     if (result.valid) {
       const until = new Date(result.payload.expiresAt).toLocaleDateString("ru-RU");
@@ -1348,6 +1380,7 @@ async function init() {
   const result = await window.api.getSettings();
   settings = result.settings;
   proUnlocked = result.proUnlocked;
+  licenseExpiresAt = result.licenseExpiresAt || null;
   if (result.appVersion) document.getElementById("versionBadge").textContent = `v${result.appVersion}`;
   loadIntoForm();
   updateProUI();

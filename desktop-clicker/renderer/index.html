@@ -24,21 +24,34 @@
         <p class="hint" id="note" hidden></p>
       </div>
 
-      <div class="sidebar-nav">
-        <button class="nav-item active" data-target="home"><span class="nav-icon">🏠</span> Главная</button>
-        <button class="nav-item" data-target="click"><span class="nav-icon">🖱</span> Клик</button>
-        <button class="nav-item" data-target="hotkeys"><span class="nav-icon">⌨</span> Хоткеи</button>
-        <button class="nav-item" data-target="macros"><span class="nav-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
-        <button class="nav-item" data-target="binds"><span class="nav-icon">⌨️</span> Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></button>
-        <button class="nav-item" data-target="profiles"><span class="nav-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
-        <button class="nav-item" data-target="startup"><span class="nav-icon">🚀</span> Автозагрузка</button>
-        <button class="nav-item" data-target="ocr"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
-        <button class="nav-item" data-target="record"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
-        <button class="nav-item" data-target="log"><span class="nav-icon">📋</span> Журнал</button>
-        <button class="nav-item" data-target="clipboard"><span class="nav-icon">📎</span> Буфер обмена</button>
-        <button class="nav-item" data-target="notes"><span class="nav-icon">🗒</span> Заметки</button>
-        <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
+      <div class="sidebar-search">
+        <input type="text" id="navSearch" placeholder="🔍 Поиск по разделам…" autocomplete="off" />
       </div>
+
+      <div class="sidebar-nav" id="sidebarNav">
+        <button class="nav-item active" data-target="home" data-keywords="pro лицензия ключ донат поддержать версия обновление"><span class="nav-icon">🏠</span> Главная</button>
+
+        <div class="nav-group-label" data-group="click-group">Клик</div>
+        <button class="nav-item" data-target="click" data-group="click-group" data-keywords="точка курсор режим цепочка последовательность интервал скорость турбо разброс jitter триггер цвет пиксель окно привязка текст ocr дождаться картинка образец кнопка действие клавиша"><span class="nav-icon">🖱</span> Клик</button>
+        <button class="nav-item" data-target="hotkeys" data-group="click-group" data-keywords="хоткей горячие клавиши глобальный автостоп лимит расписание отложенный старт таймер"><span class="nav-icon">⌨</span> Хоткеи</button>
+        <button class="nav-item" data-target="profiles" data-group="click-group" data-keywords="профиль пресет игра экспорт импорт сохранить настройки"><span class="nav-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
+
+        <div class="nav-group-label" data-group="automation-group">Автоматизация</div>
+        <button class="nav-item" data-target="macros" data-group="automation-group" data-keywords="макрос запись реальных кликов повтор цепочка"><span class="nav-icon">🎬</span> Макросы <span class="pro-badge tiny" id="macroTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="binds" data-group="automation-group" data-keywords="бинд хоткей печать текст глобальный"><span class="nav-icon">⌨️</span> Бинды <span class="pro-badge tiny" id="bindsTabBadge">Pro</span></button>
+
+        <div class="nav-group-label" data-group="tools-group">Инструменты</div>
+        <button class="nav-item" data-target="ocr" data-group="tools-group" data-keywords="ocr текст с экрана распознавание область"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="record" data-group="tools-group" data-keywords="запись экрана видео таймлапс монитор индикатор rec"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="clipboard" data-group="tools-group" data-keywords="буфер обмена копировать история текст"><span class="nav-icon">📎</span> Буфер обмена</button>
+        <button class="nav-item" data-target="notes" data-group="tools-group" data-keywords="заметки sticky notes картинки цвет закрепить шрифт жирный курсив"><span class="nav-icon">🗒</span> Заметки</button>
+
+        <div class="nav-group-label" data-group="system-group">Система</div>
+        <button class="nav-item" data-target="startup" data-group="system-group" data-keywords="автозагрузка программы windows автозапуск"><span class="nav-icon">🚀</span> Автозагрузка</button>
+        <button class="nav-item" data-target="system" data-group="system-group" data-keywords="настройки анти-афк idle телеграм telegram уведомления система запуск трей"><span class="nav-icon">⚙</span> Настройки</button>
+        <button class="nav-item" data-target="log" data-group="system-group" data-keywords="журнал активность история события"><span class="nav-icon">📋</span> Журнал</button>
+      </div>
+      <p class="hint nav-empty-hint" id="navEmptyHint" hidden>Ничего не найдено</p>
     </nav>
 
     <main class="content">

@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("noteApi", {
   updateColor: (color) => ipcRenderer.send("notes:updateColor", color),
   deleteNote: () => ipcRenderer.send("notes:deleteSelf"),
   saveImage: (arrayBuffer, mimeType) => ipcRenderer.invoke("notes:saveImage", arrayBuffer, mimeType),
+  togglePinned: () => ipcRenderer.invoke("notes:togglePinned"),
 });

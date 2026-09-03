@@ -609,7 +609,7 @@ function stopClipboardPolling() {
 
 const NOTE_COLORS = ["#fff59d", "#f8bbd0", "#b3e5fc", "#c8e6c9", "#e1bee7", "#ffccbc"];
 const NOTE_DEFAULT_WIDTH = 220;
-const NOTE_DEFAULT_HEIGHT = 220;
+const NOTE_DEFAULT_HEIGHT = 260; // выше, чем раньше, — теперь есть ещё строка тулбара форматирования
 
 const noteWindows = new Map(); // id -> BrowserWindow
 const noteWindowIdMap = new Map(); // webContents.id -> note id
@@ -658,7 +658,7 @@ function createStickyNoteWindow(note) {
     minHeight: 120,
     frame: false,
     resizable: true,
-    alwaysOnTop: true,
+    alwaysOnTop: note.pinned !== false, // по умолчанию закреплена (поверх всех окон), как и раньше
     skipTaskbar: false,
     hasShadow: true,
     webPreferences: {
@@ -1468,7 +1468,12 @@ function panicStopAll() {
 
 ipcMain.handle("settings:get", async () => {
   const result = await refreshLicense();
-  return { settings: store.getAll(), proUnlocked: result.valid, appVersion: app.getVersion() };
+  return {
+    settings: store.getAll(),
+    proUnlocked: result.valid,
+    appVersion: app.getVersion(),
+    licenseExpiresAt: result.valid && result.payload ? result.payload.expiresAt : null,
+  };
 });
 
 ipcMain.handle("settings:set", (event, partial) => {
@@ -1605,6 +1610,21 @@ ipcMain.on("notes:updateColor", (event, color) => {
 ipcMain.on("notes:deleteSelf", (event) => {
   const id = noteWindowIdMap.get(event.sender.id);
   if (id) deleteStickyNote(id);
+});
+ipcMain.handle("notes:togglePinned", (event) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  if (!id) return null;
+  const win = noteWindows.get(id);
+  const notes = store.get("stickyNotes") || [];
+  const idx = notes.findIndex((n) => n.id === id);
+  if (idx === -1 || !win || win.isDestroyed()) return null;
+  const newPinned = !(notes[idx].pinned !== false);
+  win.setAlwaysOnTop(newPinned);
+  const updated = [...notes];
+  updated[idx] = { ...updated[idx], pinned: newPinned };
+  store.set({ stickyNotes: updated });
+  notifyNotesChanged();
+  return newPinned;
 });
 
 // Пауза перед считыванием заголовка: если сделать это сразу, "активным окном" всегда будет само

@@ -59,8 +59,43 @@
       color: rgba(0, 0, 0, 0.85);
       background: rgba(0, 0, 0, 0.08);
     }
+    .icon-btn.active {
+      color: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.15);
+    }
     .delete-btn {
       font-size: 15px;
+    }
+    .toolbar {
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 0 6px 4px;
+      flex: none;
+    }
+    .toolbar .sep {
+      width: 1px;
+      align-self: stretch;
+      background: rgba(0, 0, 0, 0.15);
+      margin: 2px 3px;
+    }
+    .toolbar select {
+      font-size: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.5);
+      padding: 2px;
+      max-width: 78px;
+    }
+    .toolbar input[type="color"] {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
     }
     .editor {
       flex: 1;
@@ -92,9 +127,32 @@
   <div class="header">
     <div class="swatches" id="swatches"></div>
     <div class="header-actions">
+      <button class="icon-btn" id="pinBtn" title="Закрепить поверх окон">📌</button>
       <button class="icon-btn" id="imageBtn" title="Вставить картинку">🖼</button>
       <button class="icon-btn delete-btn" id="deleteBtn" title="Удалить заметку">✕</button>
     </div>
+  </div>
+  <div class="toolbar">
+    <button class="icon-btn" id="boldBtn" title="Жирный"><b>Ж</b></button>
+    <button class="icon-btn" id="italicBtn" title="Курсив"><i>К</i></button>
+    <button class="icon-btn" id="underlineBtn" title="Подчёркнутый"><u>Ч</u></button>
+    <div class="sep"></div>
+    <select id="fontFamily" title="Шрифт">
+      <option value="">Шрифт</option>
+      <option value="-apple-system, 'Segoe UI', Roboto, sans-serif">Обычный</option>
+      <option value="Georgia, serif">Georgia</option>
+      <option value="'Courier New', monospace">Courier</option>
+      <option value="'Comic Sans MS', cursive">Comic Sans</option>
+    </select>
+    <select id="fontSize" title="Размер текста">
+      <option value="">Размер</option>
+      <option value="11">11</option>
+      <option value="14">14</option>
+      <option value="18">18</option>
+      <option value="24">24</option>
+      <option value="32">32</option>
+    </select>
+    <input type="color" id="textColor" title="Цвет текста" value="#000000" />
   </div>
   <div class="editor" id="editor" contenteditable="true" data-placeholder="Заметка… (можно вставить картинку — Ctrl+V, перетащить файл или кнопкой 🖼)"></div>
   <input type="file" id="fileInput" accept="image/*" hidden />
@@ -104,6 +162,7 @@
     const swatchesEl = document.getElementById("swatches");
     const editor = document.getElementById("editor");
     const fileInput = document.getElementById("fileInput");
+    const pinBtn = document.getElementById("pinBtn");
     let saveTimer = null;
 
     function applyColor(color) {
@@ -122,6 +181,15 @@
       });
     });
 
+    function applyPinnedUi(pinned) {
+      pinBtn.classList.toggle("active", pinned);
+      pinBtn.title = pinned ? "Открепить (перестанет быть поверх окон)" : "Закрепить поверх окон";
+    }
+    pinBtn.addEventListener("click", async () => {
+      const pinned = await window.noteApi.togglePinned();
+      applyPinnedUi(pinned);
+    });
+
     document.getElementById("deleteBtn").addEventListener("click", () => {
       if (confirm("Удалить эту заметку?")) window.noteApi.deleteNote();
     });
@@ -134,6 +202,42 @@
     }
 
     editor.addEventListener("input", scheduleSave);
+
+    // --- Форматирование текста (жирный/курсив/подчёркнутый/шрифт/размер/цвет) — через
+    // document.execCommand на contenteditable. API давно deprecated в спеке, но это внутренний
+    // инструмент (не веб-страница для чужих браузеров), а не поддерживать его нечем — современная
+    // замена (Selection/Range с ручной сборкой узлов) ради этого объёма функциональности не стоит
+    // сложности, и все нужные команды (bold/italic/underline/fontName/foreColor) в Chromium стабильно
+    // работают именно через execCommand.
+    function focusAndExec(command, value) {
+      editor.focus();
+      document.execCommand(command, false, value);
+      scheduleSave();
+    }
+    document.getElementById("boldBtn").addEventListener("click", () => focusAndExec("bold"));
+    document.getElementById("italicBtn").addEventListener("click", () => focusAndExec("italic"));
+    document.getElementById("underlineBtn").addEventListener("click", () => focusAndExec("underline"));
+    document.getElementById("fontFamily").addEventListener("change", (e) => {
+      if (e.target.value) focusAndExec("fontName", e.target.value);
+      e.target.value = "";
+    });
+    document.getElementById("textColor").addEventListener("input", (e) => focusAndExec("foreColor", e.target.value));
+
+    // execCommand("fontSize") понимает только легаси-шкалу 1-7 (HTML <font size>), не пиксели —
+    // используем её как временную метку, потом заменяем на span с настоящим font-size в px (стандартный
+    // приём для contenteditable, раз нормального способа задать точный px через execCommand нет).
+    document.getElementById("fontSize").addEventListener("change", (e) => {
+      const px = e.target.value;
+      e.target.value = "";
+      if (!px) return;
+      editor.focus();
+      document.execCommand("fontSize", false, "7");
+      editor.querySelectorAll('font[size="7"]').forEach((el) => {
+        el.removeAttribute("size");
+        el.style.fontSize = px + "px";
+      });
+      scheduleSave();
+    });
 
     // Вставленные картинки сохраняются файлом через main-процесс (см. notes:saveImage в main.js) —
     // не как base64 прямо в HTML заметки, иначе один скриншот раздул бы settings.json на мегабайты.
@@ -185,6 +289,7 @@
         if (note.html) editor.innerHTML = note.html;
         else editor.textContent = note.text || ""; // старые заметки без картинок — просто текст
         applyColor(note.color || COLORS[0]);
+        applyPinnedUi(note.pinned !== false);
       }
       editor.focus();
     })();
