@@ -21,6 +21,7 @@ const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { pathToFileURL } = require("url");
 const { execFile } = require("child_process");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
@@ -706,11 +707,18 @@ function createStickyNote() {
   return note;
 }
 
+function getStickyNoteImagesDir(noteId) {
+  const dir = path.join(app.getPath("userData"), "sticky-note-images", noteId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function deleteStickyNote(id) {
   const win = noteWindows.get(id);
   if (win && !win.isDestroyed()) win.close(); // сам уберёт себя из noteWindows через 'closed'
   const notes = (store.get("stickyNotes") || []).filter((n) => n.id !== id);
   store.set({ stickyNotes: notes });
+  fs.rm(path.join(app.getPath("userData"), "sticky-note-images", id), { recursive: true, force: true }, () => {}); // вставленные картинки этой заметки больше никому не нужны
   notifyNotesChanged();
 }
 
@@ -1554,16 +1562,34 @@ ipcMain.handle("notes:getInitialData", (event) => {
   const id = noteWindowIdMap.get(event.sender.id);
   return (store.get("stickyNotes") || []).find((n) => n.id === id) || null;
 });
-ipcMain.on("notes:updateText", (event, text) => {
+ipcMain.on("notes:updateContent", (event, { text, html }) => {
   const id = noteWindowIdMap.get(event.sender.id);
   if (!id) return;
   const notes = store.get("stickyNotes") || [];
   const idx = notes.findIndex((n) => n.id === id);
   if (idx === -1) return;
   const updated = [...notes];
-  updated[idx] = { ...updated[idx], text };
+  updated[idx] = { ...updated[idx], text, html };
   store.set({ stickyNotes: updated });
   notifyNotesChanged();
+});
+// Картинки, вставленные в заметку (Ctrl+V, drag-and-drop или кнопкой), сохраняются файлом в папке
+// данных приложения (своя подпапка на каждую заметку, чистится целиком при удалении заметки — см.
+// deleteStickyNote), а не base64 прямо внутри settings.json — иначе один вставленный скриншот раздул
+// бы файл настроек на мегабайты и замедлил каждую операцию store.set(), которая читает/пишет его целиком.
+const IMAGE_EXT_BY_MIME = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+ipcMain.handle("notes:saveImage", (event, arrayBuffer, mimeType) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  if (!id) return { ok: false, error: "unknown-note" };
+  const ext = IMAGE_EXT_BY_MIME[mimeType] || "png";
+  const fileName = `img-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+  const filePath = path.join(getStickyNoteImagesDir(id), fileName);
+  try {
+    fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
+    return { ok: true, url: pathToFileURL(filePath).href };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 ipcMain.on("notes:updateColor", (event, color) => {
   const id = noteWindowIdMap.get(event.sender.id);

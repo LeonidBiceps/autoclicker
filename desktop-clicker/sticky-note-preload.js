@@ -4,7 +4,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 // noteWindowIdMap в main.js), так что сюда не нужно передавать id заметки вручную.
 contextBridge.exposeInMainWorld("noteApi", {
   getInitialData: () => ipcRenderer.invoke("notes:getInitialData"),
-  updateText: (text) => ipcRenderer.send("notes:updateText", text),
+  updateContent: (text, html) => ipcRenderer.send("notes:updateContent", { text, html }),
   updateColor: (color) => ipcRenderer.send("notes:updateColor", color),
   deleteNote: () => ipcRenderer.send("notes:deleteSelf"),
+  saveImage: (arrayBuffer, mimeType) => ipcRenderer.invoke("notes:saveImage", arrayBuffer, mimeType),
 });

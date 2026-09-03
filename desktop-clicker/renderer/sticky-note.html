@@ -39,42 +39,71 @@
     .swatch.active {
       box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
     }
-    .delete-btn {
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
       -webkit-app-region: no-drag;
+    }
+    .icon-btn {
       border: none;
       background: transparent;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1;
       color: rgba(0, 0, 0, 0.45);
-      padding: 2px 4px;
+      padding: 3px 5px;
+      border-radius: 4px;
     }
-    .delete-btn:hover {
+    .icon-btn:hover {
       color: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.08);
     }
-    textarea {
+    .delete-btn {
+      font-size: 15px;
+    }
+    .editor {
       flex: 1;
-      resize: none;
-      border: none;
+      overflow-y: auto;
       outline: none;
-      background: transparent;
       padding: 0 12px 12px;
-      font: inherit;
       color: rgba(0, 0, 0, 0.85);
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+    .editor:empty::before {
+      content: attr(data-placeholder);
+      color: rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+    .editor.drag-over {
+      outline: 2px dashed rgba(0, 0, 0, 0.35);
+      outline-offset: -4px;
+    }
+    .editor img {
+      max-width: 100%;
+      display: block;
+      margin: 4px 0;
+      border-radius: 4px;
     }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="swatches" id="swatches"></div>
-    <button class="delete-btn" id="deleteBtn" title="Удалить заметку">✕</button>
+    <div class="header-actions">
+      <button class="icon-btn" id="imageBtn" title="Вставить картинку">🖼</button>
+      <button class="icon-btn delete-btn" id="deleteBtn" title="Удалить заметку">✕</button>
+    </div>
   </div>
-  <textarea id="text" placeholder="Заметка…" spellcheck="false"></textarea>
+  <div class="editor" id="editor" contenteditable="true" data-placeholder="Заметка… (можно вставить картинку — Ctrl+V, перетащить файл или кнопкой 🖼)"></div>
+  <input type="file" id="fileInput" accept="image/*" hidden />
 
   <script>
     const COLORS = ["#fff59d", "#f8bbd0", "#b3e5fc", "#c8e6c9", "#e1bee7", "#ffccbc"];
     const swatchesEl = document.getElementById("swatches");
-    const textEl = document.getElementById("text");
+    const editor = document.getElementById("editor");
+    const fileInput = document.getElementById("fileInput");
     let saveTimer = null;
 
     function applyColor(color) {
@@ -97,18 +126,67 @@
       if (confirm("Удалить эту заметку?")) window.noteApi.deleteNote();
     });
 
-    textEl.addEventListener("input", () => {
+    function scheduleSave() {
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => window.noteApi.updateText(textEl.value), 400);
+      saveTimer = setTimeout(() => {
+        window.noteApi.updateContent(editor.textContent, editor.innerHTML);
+      }, 400);
+    }
+
+    editor.addEventListener("input", scheduleSave);
+
+    // Вставленные картинки сохраняются файлом через main-процесс (см. notes:saveImage в main.js) —
+    // не как base64 прямо в HTML заметки, иначе один скриншот раздул бы settings.json на мегабайты.
+    async function insertImageFromBlob(blob) {
+      const buffer = await blob.arrayBuffer();
+      const result = await window.noteApi.saveImage(buffer, blob.type);
+      if (result.ok) {
+        editor.focus();
+        document.execCommand("insertHTML", false, `<img src="${result.url}">`);
+        scheduleSave();
+      }
+    }
+
+    editor.addEventListener("paste", (e) => {
+      const items = e.clipboardData ? e.clipboardData.items : [];
+      for (const item of items) {
+        if (item.type && item.type.startsWith("image/")) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (blob) insertImageFromBlob(blob);
+          return;
+        }
+      }
+      // иначе — обычная вставка текста, ничего не перехватываем
+    });
+
+    editor.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      editor.classList.add("drag-over");
+    });
+    editor.addEventListener("dragleave", () => editor.classList.remove("drag-over"));
+    editor.addEventListener("drop", (e) => {
+      e.preventDefault();
+      editor.classList.remove("drag-over");
+      const files = [...(e.dataTransfer ? e.dataTransfer.files : [])].filter((f) => f.type.startsWith("image/"));
+      files.forEach(insertImageFromBlob);
+    });
+
+    document.getElementById("imageBtn").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (file) insertImageFromBlob(file);
+      fileInput.value = "";
     });
 
     (async () => {
       const note = await window.noteApi.getInitialData();
       if (note) {
-        textEl.value = note.text || "";
+        if (note.html) editor.innerHTML = note.html;
+        else editor.textContent = note.text || ""; // старые заметки без картинок — просто текст
         applyColor(note.color || COLORS[0]);
       }
-      textEl.focus();
+      editor.focus();
     })();
   </script>
 </body>

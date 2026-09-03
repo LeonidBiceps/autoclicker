@@ -1167,7 +1167,8 @@ function renderNotesList(notes) {
   }
   list.innerHTML = notes
     .map((n) => {
-      const preview = (n.text || "").trim() || "(пусто)";
+      const hasImage = !!(n.html && n.html.includes("<img"));
+      const preview = (n.text || "").trim() || (hasImage ? "🖼 картинка" : "(пусто)");
       const shown = preview.length > 60 ? `${preview.slice(0, 60)}…` : preview;
       return `<div class="macro-item">
         <span style="border-left: 3px solid ${n.color}; padding-left: 6px;" title="${escapeHtml(preview)}">${escapeHtml(shown)}</span>
