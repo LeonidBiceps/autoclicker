@@ -108,7 +108,24 @@ function correlationAt(haystack, needle, ox, oy) {
   const totalVarN = varN[0] + varN[1] + varN[2];
   const denom = Math.sqrt(totalVarH * totalVarN);
   if (denom < 1e-6) return -1;
-  return covar / denom;
+  const corrScore = covar / denom;
+
+  // Настоящие "почти однотонные" области реального скриншота (фон/обои с лёгким шумом или
+  // градиентом) не проходят строгую проверку выше (дисперсия не равна нулю), но чистая
+  // корреляция для такого слабого сигнала численно неустойчива — знаменатель маленький, и шум
+  // решает результат больше, чем реальное сходство (проверено вживую: confidence заметно ниже
+  // порога на таких образцах). Подмешиваем сравнение среднего цвета пропорционально тому,
+  // насколько мало текстуры в патче (среднее на пиксель, чтобы не зависеть от размера needle) —
+  // для текстурных образцов (иконки, кнопки) вес около нуля, ничего не меняется.
+  const avgVar = (totalVarH + totalVarN) / (2 * npx);
+  const NEAR_FLAT_SCALE = 0.004;
+  const nearFlatWeight = Math.max(0, 1 - avgVar / NEAR_FLAT_SCALE);
+  if (nearFlatWeight > 0) {
+    const dr = meanH[0] - meanN[0], dg = meanH[1] - meanN[1], db = meanH[2] - meanN[2];
+    const colorScore = 1 - Math.sqrt(dr * dr + dg * dg + db * db) * 2;
+    return nearFlatWeight * colorScore + (1 - nearFlatWeight) * corrScore;
+  }
+  return corrScore;
 }
 
 function findBestMatch(haystack, needle, searchLeft, searchTop, searchRight, searchBottom, step) {

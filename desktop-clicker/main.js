@@ -196,8 +196,13 @@ let textTriggerLastMatch = true;
 let textTriggerPolling = false;
 let textTriggerTimer = null;
 
-async function pollTextTrigger(trigger) {
+// Настройки триггера читаем заново на каждый опрос (а не один раз при запуске цикла) — иначе
+// изменение области/образца/порога во вкладке «Клик», пока кликер уже работает, тихо игнорировалось
+// бы до перезапуска (был реальный баг: обновлённая на лету настройка триггера не подхватывалась).
+async function pollTextTrigger() {
   if (textTriggerPolling) return;
+  const trigger = store.get("textTrigger");
+  if (!proUnlocked || !trigger || !trigger.enabled || !trigger.region || !trigger.expectedText) return;
   textTriggerPolling = true;
   try {
     const result = await runOcr(trigger.region, trigger.lang || "rus+eng");
@@ -216,11 +221,11 @@ async function pollTextTrigger(trigger) {
   }
 }
 
-function startTextTriggerPolling(trigger) {
+function startTextTriggerPolling() {
   stopTextTriggerPolling();
   textTriggerLastMatch = false; // до первого успешного опроса — считаем, что текста ещё нет
-  pollTextTrigger(trigger);
-  textTriggerTimer = setInterval(() => pollTextTrigger(trigger), 1500);
+  pollTextTrigger();
+  textTriggerTimer = setInterval(() => pollTextTrigger(), 1500);
 }
 
 function stopTextTriggerPolling() {
@@ -253,8 +258,12 @@ let imageTriggerLastMatch = true;
 let imageTriggerPolling = false;
 let imageTriggerTimer = null;
 
-async function pollImageTrigger(trigger) {
+// Как и текстовый триггер (см. pollTextTrigger) — настройки читаем заново на каждый опрос, а не
+// один раз при запуске цикла, чтобы изменение образца/порога на лету реально применялось.
+async function pollImageTrigger() {
   if (imageTriggerPolling) return;
+  const trigger = store.get("imageTrigger");
+  if (!proUnlocked || !trigger || !trigger.enabled || !trigger.templateFile) return;
   imageTriggerPolling = true;
   try {
     await nutScreen.find(imageResource(trigger.templateFile), { confidence: trigger.confidence || 0.9 });
@@ -271,11 +280,11 @@ async function pollImageTrigger(trigger) {
   }
 }
 
-function startImageTriggerPolling(trigger) {
+function startImageTriggerPolling() {
   stopImageTriggerPolling();
   imageTriggerLastMatch = false;
-  pollImageTrigger(trigger);
-  imageTriggerTimer = setInterval(() => pollImageTrigger(trigger), 1500);
+  pollImageTrigger();
+  imageTriggerTimer = setInterval(() => pollImageTrigger(), 1500);
 }
 
 function stopImageTriggerPolling() {
@@ -369,12 +378,11 @@ function startClicking() {
   sendStatus();
   createHud();
   updateHud("● 0 кликов");
-  if (proUnlocked && settings.textTrigger && settings.textTrigger.enabled && settings.textTrigger.region) {
-    startTextTriggerPolling(settings.textTrigger);
-  }
-  if (proUnlocked && settings.imageTrigger && settings.imageTrigger.enabled && settings.imageTrigger.templateFile) {
-    startImageTriggerPolling(settings.imageTrigger);
-  }
+  // Опрос всегда запускается на весь сеанс клика, а не только когда триггер включён в этот момент —
+  // сам опрос дешёвый (проверяет настройки и сразу выходит, если триггер выключен), а взамен
+  // включение/изменение триггера прямо во время работы кликера подхватывается само, без рестарта.
+  startTextTriggerPolling();
+  startImageTriggerPolling();
   scheduleNext();
   logActivity("🟢 Кликер запущен");
   notifyTelegram("🟢 Кликер запущен");
@@ -1364,8 +1372,9 @@ ipcMain.handle("record:listMonitors", () => {
     id: d.id,
     width: d.bounds.width,
     height: d.bounds.height,
+    negativeCoords: d.bounds.x < 0 || d.bounds.y < 0,
     label: `Монитор ${i + 1} (${d.bounds.width}×${d.bounds.height}${d.id === primaryId ? ", основной" : ""}${
-      d.bounds.x < 0 || d.bounds.y < 0 ? " — только режим «Видео»" : ""
+      d.bounds.x < 0 || d.bounds.y < 0 ? " — «Таймлапс» тут недоступен, переключим на «Видео»" : ""
     })`,
   }));
 });

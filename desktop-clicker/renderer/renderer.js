@@ -618,6 +618,11 @@ function bindHandlers() {
   });
   f.launchMinimized.addEventListener("change", () => save({ launchMinimized: f.launchMinimized.checked }));
 
+  document.getElementById("extensionLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    window.api.openExternal("https://github.com/LeonidBiceps/autoclicker/releases/latest");
+  });
+
   document.getElementById("donateBtn").addEventListener("click", async () => {
     const result = await window.api.openDonate();
     const message = document.getElementById("donateMessage");
@@ -1246,13 +1251,27 @@ function countdown(status, seconds) {
   });
 }
 
+let activeRecordMode = null; // реальный режим текущей записи — может отличаться от settings.recordMode при авто-переключении ниже
+
 async function startScreenRecording() {
   if (!proUnlocked) return;
   const status = document.getElementById("recordScreenStatus");
   const startBtn = document.getElementById("recordStartBtn");
   startBtn.disabled = true;
   await countdown(status, 3);
-  const mode = settings.recordMode || "timelapse";
+  let mode = settings.recordMode || "timelapse";
+  // "Таймлапс" физически не может записать монитор левее/выше основного (отрицательные координаты
+  // в общем виртуальном рабочем столе — nut-js captureRegion() такие отклоняет). Раньше это была
+  // просто ошибка с советом переключиться на «Видео» вручную — теперь переключаем сами, раз второй
+  // режим и так способен записать любой монитор.
+  if (mode === "timelapse") {
+    const chosenMonitor = recordMonitorsCache.find((m) => m.id === settings.recordMonitorId);
+    if (chosenMonitor && chosenMonitor.negativeCoords) {
+      mode = "video";
+      status.textContent = "«Таймлапс» не может записать этот монитор — переключаемся на «Видео»…";
+    }
+  }
+  activeRecordMode = mode;
   if (mode === "video") {
     const ok = await startVideoRecording(status);
     if (!ok) {
@@ -1275,7 +1294,7 @@ async function startScreenRecording() {
 async function stopScreenRecording() {
   const status = document.getElementById("recordScreenStatus");
   document.getElementById("recordStopBtn").disabled = true;
-  const mode = settings.recordMode || "timelapse";
+  const mode = activeRecordMode || settings.recordMode || "timelapse";
   if (mode === "video") {
     window.api.hideRecordHud();
     status.textContent = "Собираем видео…";
