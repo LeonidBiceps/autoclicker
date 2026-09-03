@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld("api", {
   clearClipboardHistory: () => ipcRenderer.invoke("clipboard:clear"),
   copyFromClipboardHistory: (text) => ipcRenderer.invoke("clipboard:copy", text),
 
+  listNotes: () => ipcRenderer.invoke("notes:list"),
+  createNote: () => ipcRenderer.invoke("notes:create"),
+  showNote: (id) => ipcRenderer.invoke("notes:show", id),
+  deleteNote: (id) => ipcRenderer.invoke("notes:delete", id),
+
   onStatus: (callback) => ipcRenderer.on("status:update", (_e, data) => callback(data)),
   onNote: (callback) => ipcRenderer.on("note:show", (_e, text) => callback(text)),
   onRecordingStopped: (callback) => ipcRenderer.on("recording:stopped", (_e, events) => callback(events)),
@@ -61,5 +66,6 @@ contextBridge.exposeInMainWorld("api", {
   onActivityNew: (callback) => ipcRenderer.on("activity:new", (_e, entry) => callback(entry)),
   onUpdateAvailable: (callback) => ipcRenderer.on("update:available", (_e, info) => callback(info)),
   onClipboardNew: (callback) => ipcRenderer.on("clipboard:new", (_e, entry) => callback(entry)),
+  onNotesChanged: (callback) => ipcRenderer.on("notes:changed", (_e, notes) => callback(notes)),
   onPanicStopRecording: (callback) => ipcRenderer.on("panic:stopRecording", () => callback()),
 });

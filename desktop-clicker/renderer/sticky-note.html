@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font: 14px -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: #fff59d;
+    }
+    .header {
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      flex: none;
+    }
+    .swatches {
+      display: flex;
+      gap: 6px;
+      -webkit-app-region: no-drag;
+    }
+    .swatch {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      padding: 0;
+    }
+    .swatch.active {
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
+    }
+    .delete-btn {
+      -webkit-app-region: no-drag;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1;
+      color: rgba(0, 0, 0, 0.45);
+      padding: 2px 4px;
+    }
+    .delete-btn:hover {
+      color: rgba(0, 0, 0, 0.85);
+    }
+    textarea {
+      flex: 1;
+      resize: none;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0 12px 12px;
+      font: inherit;
+      color: rgba(0, 0, 0, 0.85);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="swatches" id="swatches"></div>
+    <button class="delete-btn" id="deleteBtn" title="Удалить заметку">✕</button>
+  </div>
+  <textarea id="text" placeholder="Заметка…" spellcheck="false"></textarea>
+
+  <script>
+    const COLORS = ["#fff59d", "#f8bbd0", "#b3e5fc", "#c8e6c9", "#e1bee7", "#ffccbc"];
+    const swatchesEl = document.getElementById("swatches");
+    const textEl = document.getElementById("text");
+    let saveTimer = null;
+
+    function applyColor(color) {
+      document.body.style.background = color;
+      swatchesEl.querySelectorAll(".swatch").forEach((el) => {
+        el.classList.toggle("active", el.dataset.color === color);
+      });
+    }
+
+    swatchesEl.innerHTML = COLORS.map((c) => `<button class="swatch" data-color="${c}" style="background:${c}"></button>`).join("");
+    swatchesEl.querySelectorAll(".swatch").forEach((el) => {
+      el.addEventListener("click", () => {
+        const color = el.dataset.color;
+        applyColor(color);
+        window.noteApi.updateColor(color);
+      });
+    });
+
+    document.getElementById("deleteBtn").addEventListener("click", () => {
+      if (confirm("Удалить эту заметку?")) window.noteApi.deleteNote();
+    });
+
+    textEl.addEventListener("input", () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => window.noteApi.updateText(textEl.value), 400);
+    });
+
+    (async () => {
+      const note = await window.noteApi.getInitialData();
+      if (note) {
+        textEl.value = note.text || "";
+        applyColor(note.color || COLORS[0]);
+      }
+      textEl.focus();
+    })();
+  </script>
+</body>
+</html>

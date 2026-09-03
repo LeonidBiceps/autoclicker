@@ -47,6 +47,7 @@ const DEFAULT_SETTINGS = {
   clipboardHistoryEnabled: true,
   clipboardHistory: [], // [{ ts, text }, ...] — последние 50 записей
   turboMode: false, // Pro: игнорирует интервал/разброс — кликает так быстро, как позволяет железо
+  stickyNotes: [], // [{ id, text, color, x, y, width, height }, ...] — плавающие заметки поверх экрана (бесплатно, без лимита)
 };
 
 // Поля, которые входят в профиль/экспорт (не licenseKey/profiles/macros — те отдельно).

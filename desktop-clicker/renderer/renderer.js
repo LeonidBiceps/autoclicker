@@ -1077,6 +1077,9 @@ function bindHandlers() {
     renderClipboardList(list);
   });
 
+  document.getElementById("notesCreateBtn").addEventListener("click", () => window.api.createNote());
+  window.api.onNotesChanged((notes) => renderNotesList(notes));
+
   window.api.onStatus((status) => renderStatus(status));
   window.api.onNote((text) => {
     const note = document.getElementById("note");
@@ -1151,6 +1154,37 @@ function renderClipboardList(history) {
   const reversed = [...history].reverse();
   list.querySelectorAll(".clipboard-copy-btn").forEach((btn) => {
     btn.addEventListener("click", () => window.api.copyFromClipboardHistory(reversed[Number(btn.dataset.i)].text));
+  });
+}
+
+// --- Заметки (Sticky Notes) ---
+
+function renderNotesList(notes) {
+  const list = document.getElementById("notesList");
+  if (!notes || notes.length === 0) {
+    list.innerHTML = `<div class="empty-hint">🗒 Пока нет заметок</div>`;
+    return;
+  }
+  list.innerHTML = notes
+    .map((n) => {
+      const preview = (n.text || "").trim() || "(пусто)";
+      const shown = preview.length > 60 ? `${preview.slice(0, 60)}…` : preview;
+      return `<div class="macro-item">
+        <span style="border-left: 3px solid ${n.color}; padding-left: 6px;" title="${escapeHtml(preview)}">${escapeHtml(shown)}</span>
+        <div class="item-actions">
+          <button class="note-show-btn" data-id="${n.id}">Показать</button>
+          <button class="note-delete-btn delete-btn" data-id="${n.id}">Удалить</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+  list.querySelectorAll(".note-show-btn").forEach((btn) => {
+    btn.addEventListener("click", () => window.api.showNote(btn.dataset.id));
+  });
+  list.querySelectorAll(".note-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (confirm("Удалить эту заметку?")) window.api.deleteNote(btn.dataset.id);
+    });
   });
 }
 
@@ -1328,6 +1362,7 @@ async function init() {
   populateRecordMonitors();
   renderActivityLog(await window.api.getActivityLog());
   renderClipboardList(await window.api.getClipboardHistory());
+  renderNotesList(await window.api.listNotes());
   showUpdateNotice(await window.api.getUpdateInfo());
 }
 

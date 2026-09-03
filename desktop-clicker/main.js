@@ -599,6 +599,136 @@ function stopClipboardPolling() {
   clipboardPollTimer = null;
 }
 
+// --- Плавающие заметки (Sticky Notes) — бесплатно, без лимита ---
+//
+// Каждая заметка — своё отдельное окно (frame:false, alwaysOnTop), а не одна общая панель с
+// вкладками — так их можно свободно раскидать по экрану(-ам), как настоящие бумажные стикеры.
+// Какая заметка открыта в конкретном окне main-процесс знает по webContents.id (noteWindowIdMap),
+// а не по параметру в URL — не завязано на то, что рендерер честно вернёт свой же id обратно.
+
+const NOTE_COLORS = ["#fff59d", "#f8bbd0", "#b3e5fc", "#c8e6c9", "#e1bee7", "#ffccbc"];
+const NOTE_DEFAULT_WIDTH = 220;
+const NOTE_DEFAULT_HEIGHT = 220;
+
+const noteWindows = new Map(); // id -> BrowserWindow
+const noteWindowIdMap = new Map(); // webContents.id -> note id
+
+function clampNoteBounds(bounds) {
+  // Если экран, на котором лежала заметка, отключили (например, был подключён второй монитор, а
+  // теперь ноутбук работает один) — не даём заметке потеряться за пределами всех текущих дисплеев.
+  const displays = screen.getAllDisplays();
+  const onAnyDisplay = displays.some((d) => {
+    const b = d.bounds;
+    return bounds.x + bounds.width > b.x && bounds.x < b.x + b.width && bounds.y + bounds.height > b.y && bounds.y < b.y + b.height;
+  });
+  if (onAnyDisplay) return bounds;
+  const primary = screen.getPrimaryDisplay().bounds;
+  return { ...bounds, x: primary.x + 40, y: primary.y + 40 };
+}
+
+function persistNoteBounds(id, winBounds) {
+  const notes = store.get("stickyNotes") || [];
+  const idx = notes.findIndex((n) => n.id === id);
+  if (idx === -1) return;
+  const updated = [...notes];
+  updated[idx] = { ...updated[idx], x: winBounds.x, y: winBounds.y, width: winBounds.width, height: winBounds.height };
+  store.set({ stickyNotes: updated });
+}
+
+function notifyNotesChanged() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("notes:changed", store.get("stickyNotes") || []);
+  }
+}
+
+function createStickyNoteWindow(note) {
+  const bounds = clampNoteBounds({
+    x: note.x,
+    y: note.y,
+    width: note.width || NOTE_DEFAULT_WIDTH,
+    height: note.height || NOTE_DEFAULT_HEIGHT,
+  });
+  const win = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: 140,
+    minHeight: 120,
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    hasShadow: true,
+    webPreferences: {
+      contextIsolation: true,
+      preload: path.join(__dirname, "sticky-note-preload.js"),
+    },
+  });
+  const webContentsId = win.webContents.id; // захватываем до закрытия — в 'closed' webContents уже уничтожен
+  noteWindows.set(note.id, win);
+  noteWindowIdMap.set(webContentsId, note.id);
+  win.loadFile(path.join(__dirname, "renderer", "sticky-note.html"));
+
+  let boundsSaveTimer = null;
+  const scheduleBoundsSave = () => {
+    clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = setTimeout(() => {
+      if (!win.isDestroyed()) persistNoteBounds(note.id, win.getBounds());
+    }, 400);
+  };
+  win.on("move", scheduleBoundsSave);
+  win.on("resize", scheduleBoundsSave);
+  win.on("closed", () => {
+    noteWindows.delete(note.id);
+    noteWindowIdMap.delete(webContentsId);
+  });
+  return win;
+}
+
+function createStickyNote() {
+  const existing = store.get("stickyNotes") || [];
+  const id = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const offset = (existing.length % 8) * 24;
+  const primary = screen.getPrimaryDisplay().bounds;
+  const note = {
+    id,
+    text: "",
+    color: NOTE_COLORS[existing.length % NOTE_COLORS.length],
+    x: primary.x + 80 + offset,
+    y: primary.y + 80 + offset,
+    width: NOTE_DEFAULT_WIDTH,
+    height: NOTE_DEFAULT_HEIGHT,
+  };
+  store.set({ stickyNotes: [...existing, note] });
+  createStickyNoteWindow(note);
+  notifyNotesChanged();
+  return note;
+}
+
+function deleteStickyNote(id) {
+  const win = noteWindows.get(id);
+  if (win && !win.isDestroyed()) win.close(); // сам уберёт себя из noteWindows через 'closed'
+  const notes = (store.get("stickyNotes") || []).filter((n) => n.id !== id);
+  store.set({ stickyNotes: notes });
+  notifyNotesChanged();
+}
+
+function showStickyNote(id) {
+  const win = noteWindows.get(id);
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.setBounds(clampNoteBounds(win.getBounds()));
+  win.show();
+  win.focus();
+}
+
+function restoreStickyNotes() {
+  for (const note of store.get("stickyNotes") || []) {
+    createStickyNoteWindow(note);
+  }
+}
+
 // --- Point picking overlay (multi-monitor) ---
 
 function pickPoint() {
@@ -1227,6 +1357,8 @@ function updateTrayMenu() {
     { label: "Показать окно", click: () => mainWindow.show() },
     { label: running ? "Стоп" : "Старт", click: () => toggleClicking() },
     { type: "separator" },
+    { label: "🗒 Новая заметка", click: () => createStickyNote() },
+    { type: "separator" },
     {
       label: "Перезапустить",
       click: () => {
@@ -1412,6 +1544,41 @@ ipcMain.handle("clipboard:clear", () => {
 ipcMain.handle("clipboard:copy", (event, text) => {
   lastClipboardText = text; // не даём собственной же вставке снова попасть в историю как "новую"
   clipboard.writeText(text);
+});
+
+ipcMain.handle("notes:list", () => store.get("stickyNotes") || []);
+ipcMain.handle("notes:create", () => createStickyNote());
+ipcMain.handle("notes:show", (event, id) => showStickyNote(id));
+ipcMain.handle("notes:delete", (event, id) => deleteStickyNote(id));
+ipcMain.handle("notes:getInitialData", (event) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  return (store.get("stickyNotes") || []).find((n) => n.id === id) || null;
+});
+ipcMain.on("notes:updateText", (event, text) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  if (!id) return;
+  const notes = store.get("stickyNotes") || [];
+  const idx = notes.findIndex((n) => n.id === id);
+  if (idx === -1) return;
+  const updated = [...notes];
+  updated[idx] = { ...updated[idx], text };
+  store.set({ stickyNotes: updated });
+  notifyNotesChanged();
+});
+ipcMain.on("notes:updateColor", (event, color) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  if (!id) return;
+  const notes = store.get("stickyNotes") || [];
+  const idx = notes.findIndex((n) => n.id === id);
+  if (idx === -1) return;
+  const updated = [...notes];
+  updated[idx] = { ...updated[idx], color };
+  store.set({ stickyNotes: updated });
+  notifyNotesChanged();
+});
+ipcMain.on("notes:deleteSelf", (event) => {
+  const id = noteWindowIdMap.get(event.sender.id);
+  if (id) deleteStickyNote(id);
 });
 
 // Пауза перед считыванием заголовка: если сделать это сразу, "активным окном" всегда будет само
@@ -1851,6 +2018,7 @@ app.whenReady().then(async () => {
   if (store.get("antiAfkEnabled")) startAntiAfk();
   if (store.get("idleStartEnabled")) startIdleStartPolling();
   if (store.get("clipboardHistoryEnabled")) startClipboardPolling();
+  restoreStickyNotes();
   nutScreen.config.resourceDirectory = getImageTemplatesDir(); // для триггера по картинке — imageResource() ищет файлы относительно этой папки
   providerRegistry.registerImageFinder(new JimpImageFinder()); // в nut-js нет готового ImageFinder — используем свой (см. image-finder.js)
   // У nut-js по умолчанию встроена скрытая пауза ПЕРЕД каждым кликом/нажатием клавиши —

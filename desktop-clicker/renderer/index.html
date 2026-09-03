@@ -36,6 +36,7 @@
         <button class="nav-item" data-target="record"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
         <button class="nav-item" data-target="log"><span class="nav-icon">📋</span> Журнал</button>
         <button class="nav-item" data-target="clipboard"><span class="nav-icon">📎</span> Буфер обмена</button>
+        <button class="nav-item" data-target="notes"><span class="nav-icon">🗒</span> Заметки</button>
         <button class="nav-item" data-target="system"><span class="nav-icon">⚙</span> Настройки</button>
       </div>
     </nav>
@@ -638,6 +639,21 @@
           </div>
           <div class="field">
             <div class="macro-list" id="clipboardList"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="notes" hidden>
+        <h1>🗒 Заметки</h1>
+        <section>
+          <h2>🗒 Плавающие заметки <span title="Отдельные окошки поверх экрана, как Sticky Notes — печатаешь прямо в них, положение и цвет запоминаются и переживают перезапуск приложения">ⓘ</span></h2>
+          <p class="hint">Бесплатно, без лимита на число заметок. Каждая заметка — своё окошко:
+            двигай, меняй цвет и размер прямо в ней. Крестик на заметке удаляет её насовсем.</p>
+          <div class="field">
+            <button id="notesCreateBtn" class="secondary-btn">Новая заметка</button>
+          </div>
+          <div class="field">
+            <div class="macro-list" id="notesList"></div>
           </div>
         </section>
       </div>
