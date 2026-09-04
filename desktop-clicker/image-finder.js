@@ -202,4 +202,4 @@ class JimpImageFinder {
   }
 }
 
-module.exports = { JimpImageFinder };
+module.exports = { JimpImageFinder, matchOnce };

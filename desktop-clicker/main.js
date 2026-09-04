@@ -30,6 +30,9 @@ const { JimpImageFinder } = require("./image-finder");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
 const Tesseract = require("tesseract.js");
+const { CLASH_CARDS } = require("./clash-cards");
+const { ClashTracker } = require("./clash-tracker");
+const { loadCardTemplates, scanForCard } = require("./clash-finder");
 
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
@@ -66,6 +69,14 @@ let scheduledHhmm = null;
 let recording = false;
 let recordedEvents = [];
 let recordStartTime = 0;
+
+let clashHudWindow = null;
+const clashTracker = new ClashTracker({});
+let clashTemplates = null; // загружаются лениво при первом включении функции
+let clashTemplatesLoadingPromise = null;
+let clashPollTimer = null;
+let clashTickTimer = null;
+let clashLastDetectedAt = {}; // cardId -> ts последнего засчитанного розыгрыша (защита от "залипания" одной и той же карты на экране)
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -503,6 +514,39 @@ function destroyRecordHud() {
   if (recordHudWindow) {
     recordHudWindow.close();
     recordHudWindow = null;
+  }
+}
+
+// --- HUD со счётчиком эликсира и колодой противника (Clash Royale, Pro) ---
+
+function createClashHud() {
+  if (clashHudWindow) return;
+  const target = screen.getPrimaryDisplay();
+  clashHudWindow = new BrowserWindow({
+    x: target.bounds.x + target.bounds.width - 300,
+    y: target.bounds.y + 16,
+    width: 284,
+    height: 210,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, "clash-hud-preload.js") },
+  });
+  clashHudWindow.setIgnoreMouseEvents(true);
+  clashHudWindow.setAlwaysOnTop(true, "screen-saver");
+  clashHudWindow.loadFile(path.join(__dirname, "renderer", "clash-hud.html"));
+  clashHudWindow.once("ready-to-show", () => clashHudWindow && clashHudWindow.show());
+}
+
+function destroyClashHud() {
+  if (clashHudWindow) {
+    clashHudWindow.close();
+    clashHudWindow = null;
   }
 }
 
@@ -966,6 +1010,77 @@ async function runOcr(region, lang) {
   } finally {
     if (imagePath) fs.unlink(imagePath, () => {});
   }
+}
+
+// --- Clash Royale: счётчик эликсира и открытой колоды противника (Pro, экспериментально) ---
+//
+// Логика счёта (реген эликсира, "кто сейчас в руке" по последним 4 сыгранным картам) — в
+// clash-tracker.js, не зависит ни от экрана, ни от Electron. Само распознавание карты на экране —
+// в clash-finder.js, тот же движок сравнения картинок, что у "Триггера по картинке", просто в
+// цикле по всей базе карт разом, а не по одному образцу. Иконок настоящих карт в комплекте нет
+// (это графика Supercell — сознательно не скачиваем и не встраиваем её сами, см. README) — вместо
+// них генерируется заглушка на каждую карту при первом запуске; как только появятся настоящие
+// иконки (свои же скриншоты из клиента игры), файл с тем же id в clash-card-icons просто
+// заменяется, код трогать не нужно.
+
+function getClashIconsDir() {
+  const dir = path.join(app.getPath("userData"), "clash-card-icons");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function notifyClashState() {
+  const state = clashTracker.getState();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("clash:state", state);
+  if (clashHudWindow && !clashHudWindow.isDestroyed()) clashHudWindow.webContents.send("clash:state", state);
+}
+
+function ensureClashTemplatesLoaded() {
+  if (!clashTemplatesLoadingPromise) {
+    clashTemplatesLoadingPromise = loadCardTemplates(getClashIconsDir())
+      .then((templates) => {
+        clashTemplates = templates;
+      })
+      .catch((e) => {
+        clashTemplatesLoadingPromise = null; // даём шанс повторить попытку загрузки в следующий раз
+        logActivity(`Clash Royale: не удалось загрузить иконки карт — ${e.message}`);
+      });
+  }
+  return clashTemplatesLoadingPromise;
+}
+
+async function clashPollTick() {
+  const settings = store.get("clashTracker");
+  if (!settings.enabled || !settings.region || !clashTemplates) return;
+  try {
+    const match = await scanForCard(nutScreen, settings.region, clashTemplates, settings.confidence);
+    if (!match) return;
+    const lastAt = clashLastDetectedAt[match.id] || 0;
+    if (Date.now() - lastAt < settings.cooldownMs) return; // та же карта ещё "видна" с прошлого тика — не считаем повторно
+    clashLastDetectedAt[match.id] = Date.now();
+    clashTracker.recordCardPlay(match.id, match.elixir);
+    if (store.get("telegramOnTrigger")) notifyTelegram(`🃏 Противник разыграл: ${match.name}`);
+    notifyClashState();
+  } catch (e) {
+    // сбой одного тика сравнения не должен останавливать весь опрос
+  }
+}
+
+function startClashPolling(settings) {
+  stopClashPolling();
+  ensureClashTemplatesLoaded();
+  clashPollTimer = setInterval(clashPollTick, Math.max(200, settings.pollIntervalMs));
+  clashTickTimer = setInterval(() => {
+    clashTracker.tick();
+    notifyClashState();
+  }, 200);
+}
+
+function stopClashPolling() {
+  if (clashPollTimer) clearInterval(clashPollTimer);
+  if (clashTickTimer) clearInterval(clashTickTimer);
+  clashPollTimer = null;
+  clashTickTimer = null;
 }
 
 // --- Key capture (for keyboard auto-press mode) ---
@@ -1510,6 +1625,17 @@ ipcMain.handle("settings:set", (event, partial) => {
     if (partial.clipboardHistoryEnabled) startClipboardPolling();
     else stopClipboardPolling();
   }
+  if ("clashTracker" in partial) {
+    const cfg = store.get("clashTracker");
+    clashTracker.updateConfig({ matchDurationSec: cfg.matchDurationSec, overtimeMultiplier: cfg.overtimeMultiplier });
+    if (cfg.enabled) {
+      startClashPolling(cfg);
+      createClashHud();
+    } else {
+      stopClashPolling();
+      destroyClashHud();
+    }
+  }
   return store.getAll();
 });
 
@@ -1822,6 +1948,34 @@ ipcMain.handle("textTrigger:pickRegion", async () => {
   return { ok: true, region };
 });
 
+// Область, где на экране появляется разыгранная противником карта, — та же рамка выделения.
+ipcMain.handle("clash:pickRegion", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  return { ok: true, region };
+});
+ipcMain.handle("clash:getCards", () => {
+  const iconsDir = getClashIconsDir();
+  return CLASH_CARDS.map((c) => ({ ...c, iconUrl: pathToFileURL(path.join(iconsDir, `${c.id}.png`)).href }));
+});
+ipcMain.handle("clash:getState", () => clashTracker.getState());
+ipcMain.handle("clash:startMatch", () => {
+  clashTracker.start();
+  clashLastDetectedAt = {};
+  notifyClashState();
+  logActivity("🃏 Clash Royale: начало матча, счётчик сброшен");
+});
+ipcMain.handle("clash:startOvertime", () => {
+  clashTracker.startOvertime();
+  notifyClashState();
+  logActivity("🃏 Clash Royale: овертайм (х3 эликсир)");
+});
+ipcMain.handle("clash:reset", () => {
+  clashTracker.reset();
+  clashLastDetectedAt = {};
+  notifyClashState();
+});
 // Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою
 // папку, дальше nut-js screen.find() ищет её на экране целиком.
 ipcMain.handle("imageTrigger:pickTemplate", async () => {
@@ -2077,6 +2231,10 @@ app.whenReady().then(async () => {
   if (store.get("antiAfkEnabled")) startAntiAfk();
   if (store.get("idleStartEnabled")) startIdleStartPolling();
   if (store.get("clipboardHistoryEnabled")) startClipboardPolling();
+  if (store.get("clashTracker").enabled) {
+    startClashPolling(store.get("clashTracker"));
+    createClashHud();
+  }
   restoreStickyNotes();
   nutScreen.config.resourceDirectory = getImageTemplatesDir(); // для триггера по картинке — imageResource() ищет файлы относительно этой папки
   providerRegistry.registerImageFinder(new JimpImageFinder()); // в nut-js нет готового ImageFinder — используем свой (см. image-finder.js)
