@@ -32,8 +32,9 @@ const { keycodeToName, resolveNutjsKey } = require("./keymap");
 const Tesseract = require("tesseract.js");
 const { CLASH_CARDS } = require("./clash-cards");
 const { ClashTracker } = require("./clash-tracker");
-const { loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory } = require("./clash-finder");
+const { loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory, loadCardSamplesFromDisk } = require("./clash-finder");
 const { imageToJimp } = require("@nut-tree-fork/shared");
+const jimp = require("jimp");
 
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
@@ -2219,10 +2220,18 @@ ipcMain.handle("clash:pickRegion", async () => {
 // иконка видна лишь тогда). По ней дальше определяем "матч идёт/не идёт" — тот же принцип, что у
 // "Триггера по картинке" (screen.find + сохранённый образец), файл лежит в той же папке
 // (screen.config.resourceDirectory общий на всё приложение).
+// Максимум для этого конкретного шаблона — это маленькая иконка эликсира, не игровое поле.
+// Без этой проверки случайное выделение всего экрана вместо капли превращает
+// checkClashMatchActive() (тикает каждую секунду) в сравнение "весь экран с самим собой" —
+// на порядки тяжелее обычного, реально вешает весь главный процесс (клики, UI — всё).
+const CLASH_MATCH_ACTIVE_MAX_SIZE = 150;
 ipcMain.handle("clash:pickMatchActiveTemplate", async () => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
   const region = await pickRegion();
   if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  if (region.width > CLASH_MATCH_ACTIVE_MAX_SIZE || region.height > CLASH_MATCH_ACTIVE_MAX_SIZE) {
+    return { ok: false, error: "too-large" };
+  }
   const dir = getImageTemplatesDir();
   const baseName = "clash-match-active";
   try {
@@ -2313,19 +2322,73 @@ ipcMain.handle("clash:getPendingReview", async () => {
 // addSampleInMemory); cardId пустой — просто убираем из очереди без сохранения ("это не карта").
 // Live-состояние матча (эликсир/цикл) здесь НЕ трогаем — разбор идёт постфактум, когда матч уже
 // не идёт, единственная польза — обучение базы образцов.
-ipcMain.handle("clash:resolvePendingReview", (event, reviewId, cardId) => {
+// cardIds — id одной карты (строка) или несколько сразу (массив, если на кропе видно нескольких
+// персонажей одновременно — например, свой юнит и юнит противника оказались рядом в один тик).
+// Каждая указанная карта получает ЭТОТ ЖЕ кроп как обучающий образец — не идеально чисто, если
+// персонажей несколько, но заметно лучше, чем не связать этот кадр ни с одной картой вообще.
+ipcMain.handle("clash:resolvePendingReview", (event, reviewId, cardIds) => {
   const idx = clashPendingReview.findIndex((p) => p.id === reviewId);
   if (idx === -1) return;
   const [item] = clashPendingReview.splice(idx, 1);
-  if (cardId) {
+  const ids = Array.isArray(cardIds) ? cardIds : cardIds ? [cardIds] : [];
+  for (const cardId of ids) {
     const card = CLASH_CARDS.find((c) => c.id === cardId);
-    if (card) {
-      const tmpl = clashTemplates && clashTemplates.find((c) => c.id === cardId);
-      if (tmpl) addSampleInMemory(tmpl, item.image);
-      saveNewSample(getClashIconsDir(), cardId, item.image).catch(() => {});
-    }
+    if (!card) continue;
+    const tmpl = clashTemplates && clashTemplates.find((c) => c.id === cardId);
+    if (tmpl) addSampleInMemory(tmpl, item.image);
+    saveNewSample(getClashIconsDir(), cardId, item.image).catch(() => {});
   }
   notifyClashPendingReview();
+});
+// Просмотр базы образцов — быстрый список "у каких карт сколько НАСТОЯЩИХ (не заглушка)
+// образцов накоплено" без чтения самих картинок (для полного списка карт это было бы медленно).
+ipcMain.handle("clash:getCardSampleCounts", () => {
+  const iconsDir = getClashIconsDir();
+  const counts = {};
+  for (const card of CLASH_CARDS) {
+    try {
+      const files = fs.readdirSync(path.join(iconsDir, card.id)).filter((f) => f.endsWith(".png") && f !== "placeholder.png");
+      if (files.length > 0) counts[card.id] = files.length;
+    } catch (e) {
+      // папки карты ещё нет — у неё пока нет образцов
+    }
+  }
+  return counts;
+});
+// Сами образцы ОДНОЙ карты — вызывается только когда пользователь открыл её в списке, не для
+// всех карт разом.
+ipcMain.handle("clash:getCardSamples", async (event, cardId) => {
+  if (!CLASH_CARDS.some((c) => c.id === cardId)) return [];
+  const dir = path.join(getClashIconsDir(), cardId);
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith(".png") && f !== "placeholder.png");
+  } catch (e) {
+    return [];
+  }
+  const items = [];
+  for (const f of files) {
+    try {
+      const img = await jimp.read(path.join(dir, f));
+      items.push({ file: f, dataUrl: await img.getBase64Async("image/png") });
+    } catch (e) {
+      // повреждённый файл — пропускаем
+    }
+  }
+  return items;
+});
+// Удаляет конкретный ошибочно подписанный образец — и с диска, и из памяти (иначе он продолжил
+// бы участвовать в сравнении до перезапуска приложения).
+ipcMain.handle("clash:deleteCardSample", async (event, cardId, file) => {
+  if (!CLASH_CARDS.some((c) => c.id === cardId)) return;
+  const dir = path.join(getClashIconsDir(), cardId);
+  try {
+    fs.rmSync(path.join(dir, path.basename(file)), { force: true });
+  } catch (e) {
+    // не критично — например, файл уже был занят/удалён
+  }
+  const tmpl = clashTemplates && clashTemplates.find((c) => c.id === cardId);
+  if (tmpl) tmpl.needleImages = await loadCardSamplesFromDisk(getClashIconsDir(), cardId);
 });
 ipcMain.handle("clash:clearPendingReview", () => {
   clashPendingReview = [];

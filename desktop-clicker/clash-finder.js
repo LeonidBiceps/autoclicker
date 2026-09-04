@@ -122,6 +122,28 @@ async function loadCardTemplates(iconsDir) {
   return templates;
 }
 
+// Перечитывает образцы ОДНОЙ карты с диска заново — используется после удаления ошибочного
+// образца (см. main.js clash:deleteCardSample), чтобы память сразу перестала его использовать,
+// не дожидаясь перезапуска приложения.
+async function loadCardSamplesFromDisk(iconsDir, cardId) {
+  const dir = cardSamplesDir(iconsDir, cardId);
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith(".png"));
+  } catch (e) {
+    return [];
+  }
+  const needleImages = [];
+  for (const f of files) {
+    try {
+      needleImages.push(await loadImageFile(path.join(dir, f)));
+    } catch (e) {
+      // повреждённый файл — пропускаем именно его
+    }
+  }
+  return needleImages;
+}
+
 // Добавляет новый образец в уже загруженный в памяти список шаблонов карты (без перечитывания
 // файлов с диска) — используется сразу после того, как saveNewSample записала его на диск, чтобы
 // новый образец начал учитываться в сравнении немедленно, а не только после перезапуска.
@@ -335,4 +357,12 @@ async function scanForCard(nutScreen, region, templates, confidenceThreshold, pr
   return { matches, signature, lastCrop, unmatched };
 }
 
-module.exports = { ensureCardIcons, loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory, MAX_SAMPLES_PER_CARD };
+module.exports = {
+  ensureCardIcons,
+  loadCardTemplates,
+  scanForCard,
+  saveNewSample,
+  addSampleInMemory,
+  loadCardSamplesFromDisk,
+  MAX_SAMPLES_PER_CARD,
+};

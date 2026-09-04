@@ -905,6 +905,8 @@ function bindHandlers() {
     if (result.ok) {
       await save({ clashTracker: { ...settings.clashTracker, matchActiveTemplateFile: result.templateFile } });
       renderClashSettings();
+    } else if (result.error === "too-large") {
+      alert("Область слишком большая — это должна быть маленькая иконка эликсира (капля с числом), не всё поле и не весь экран. Попробуй ещё раз, выделив только саму иконку.");
     }
   });
   document.getElementById("clashConfidenceSlider").addEventListener("input", (e) => {
