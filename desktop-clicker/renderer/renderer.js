@@ -243,6 +243,9 @@ function updateProUI() {
     "clashStartMatchBtn",
     "clashOvertimeBtn",
     "clashResetBtn",
+    "clashManualCardInput",
+    "clashManualAddBtn",
+    "clashUndoBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -412,6 +415,24 @@ function renderClashDeck(state, clashCardsById) {
     );
   }
   grid.innerHTML = slots.join("");
+
+  const recentEl = document.getElementById("clashRecentPlays");
+  if (recentEl) {
+    if (!state.recentPlays || !state.recentPlays.length) {
+      recentEl.textContent = "Пока ничего не засчитано.";
+    } else {
+      const items = state.recentPlays
+        .slice()
+        .reverse()
+        .map((p) => {
+          const card = clashCardsById[p.cardId];
+          const name = escapeHtml(card ? card.name : p.cardId);
+          const t = new Date(p.at).toLocaleTimeString();
+          return `${name} (${t})`;
+        });
+      recentEl.textContent = "Последние: " + items.join(", ");
+    }
+  }
 }
 
 function updateScheduleFieldsVisibility() {
@@ -867,6 +888,14 @@ function bindHandlers() {
   document.getElementById("clashStartMatchBtn").addEventListener("click", () => window.api.startClashMatch());
   document.getElementById("clashOvertimeBtn").addEventListener("click", () => window.api.startClashOvertime());
   document.getElementById("clashResetBtn").addEventListener("click", () => window.api.resetClash());
+  document.getElementById("clashUndoBtn").addEventListener("click", () => window.api.undoClashLastPlay());
+  document.getElementById("clashManualAddBtn").addEventListener("click", () => {
+    const input = document.getElementById("clashManualCardInput");
+    const card = (window.clashCardsList || []).find((c) => c.name.toLowerCase() === input.value.trim().toLowerCase());
+    if (!card) return;
+    window.api.recordClashManualPlay(card.id);
+    input.value = "";
+  });
 
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
@@ -1483,6 +1512,10 @@ async function init() {
   const clashCards = await window.api.getClashCards();
   const clashCardsById = {};
   clashCards.forEach((c) => (clashCardsById[c.id] = c));
+  window.clashCardsList = clashCards;
+  document.getElementById("clashCardDatalist").innerHTML = clashCards
+    .map((c) => `<option value="${escapeHtml(c.name)}"></option>`)
+    .join("");
   renderClashDeck(await window.api.getClashState(), clashCardsById);
   window.api.onClashState((state) => renderClashDeck(state, clashCardsById));
 }

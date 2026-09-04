@@ -32,7 +32,7 @@ const { keycodeToName, resolveNutjsKey } = require("./keymap");
 const Tesseract = require("tesseract.js");
 const { CLASH_CARDS } = require("./clash-cards");
 const { ClashTracker } = require("./clash-tracker");
-const { loadCardTemplates, scanForCard } = require("./clash-finder");
+const { loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory } = require("./clash-finder");
 
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
@@ -79,6 +79,8 @@ let clashTickTimer = null;
 let clashLastDetectedAt = {}; // cardId -> ts последнего засчитанного розыгрыша (защита от "залипания" одной и той же карты на экране)
 let clashLastSignature = null; // "подпись" предыдущего кадра региона — см. computeSignature в clash-finder.js
 let clashScanInProgress = false; // защита от наложения тиков: если сравнение затянулось дольше pollIntervalMs, новый тик не запускается поверх
+let clashLastCrop = null; // { image, at } — последняя обработанная область интереса поля, для привязки ручной поправки к обучающему образцу
+const CLASH_AUTO_LEARN_CONFIDENCE = 0.93; // выше обычного порога подтверждения — сохраняем как обучающий образец только очень уверенные авто-совпадения
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1054,34 +1056,51 @@ function ensureClashTemplatesLoaded() {
 async function clashPollTick() {
   const settings = store.get("clashTracker");
   if (!settings.enabled || !settings.region || !clashTemplates) return;
-  // Сравнение с целой базой карт (matchOnce на ~100 шаблонов) — тяжёлая синхронная работа на
-  // главном процессе, том же, что считает тайминг самих кликов. Если предыдущий тик почему-то
-  // ещё не закончился (медленная машина, большая область) — не запускаем второй поверх: две
-  // параллельные тяжёлые сверки только удлиняют подвисание, а не ускоряют распознавание.
+  // Сравнение с базой шаблонов (matchOnce на каждую карту в каждой изменившейся области поля) —
+  // тяжёлая синхронная работа на главном процессе, том же, что считает тайминг самих кликов. Если
+  // предыдущий тик почему-то ещё не закончился (медленная машина, большая область) — не запускаем
+  // второй поверх: две параллельные тяжёлые сверки только удлиняют подвисание.
   if (clashScanInProgress) return;
   clashScanInProgress = true;
   try {
-    const { match, signature } = await scanForCard(
+    const { matches, signature, lastCrop } = await scanForCard(
       nutScreen,
       settings.region,
       clashTemplates,
       settings.confidence,
-      clashLastSignature
+      clashLastSignature,
+      settings.cellSize
     );
     clashLastSignature = signature;
-    if (!match) return;
-    const lastAt = clashLastDetectedAt[match.id] || 0;
-    if (Date.now() - lastAt < settings.cooldownMs) return; // та же карта ещё "видна" с прошлого тика — не считаем повторно
-    clashLastDetectedAt[match.id] = Date.now();
-    if (!clashTracker.isRunning()) {
-      // Первая распознанная карта — самый надёжный сигнал, что матч уже идёт: не нужно
-      // вручную жать "Начать матч" в момент старта, счётчик подхватывает сам.
-      clashTracker.start();
-      logActivity("🃏 Clash Royale: матч определён по первой сыгранной карте, счётчик запущен");
+    // Запоминаем последнюю обработанную область интереса ДАЖЕ если её не удалось распознать —
+    // если следующим шагом пользователь вручную укажет карту (см. clash:recordManualPlay), скорее
+    // всего он имел в виду именно её.
+    if (lastCrop) clashLastCrop = { image: lastCrop, at: Date.now() };
+    if (!matches.length) return;
+    let changed = false;
+    for (const match of matches) {
+      const lastAt = clashLastDetectedAt[match.id] || 0;
+      if (Date.now() - lastAt < settings.cooldownMs) continue; // тот же юнит ещё в кадре (двигается) с прошлого тика — не считаем повторно
+      clashLastDetectedAt[match.id] = Date.now();
+      if (!clashTracker.isRunning()) {
+        // Первая распознанная карта — самый надёжный сигнал, что матч уже идёт: не нужно
+        // вручную жать "Начать матч" в момент старта, счётчик подхватывает сам.
+        clashTracker.start();
+        logActivity("🃏 Clash Royale: матч определён по первой сыгранной карте, счётчик запущен");
+      }
+      clashTracker.recordCardPlay(match.id, match.elixir);
+      if (store.get("telegramOnTrigger")) notifyTelegram(`🃏 Противник разыграл: ${match.name}`);
+      changed = true;
+      // Самообучение: очень уверенное авто-совпадение — почти наверняка верное, сохраняем этот
+      // кроп как ещё один образец карты (новый ракурс/масштаб) на будущее, не дожидаясь, пока
+      // пользователь пришлёт готовые скриншоты вручную.
+      if (match.confidence >= CLASH_AUTO_LEARN_CONFIDENCE) {
+        const tmpl = clashTemplates.find((c) => c.id === match.id);
+        if (tmpl) addSampleInMemory(tmpl, match.cropImage);
+        saveNewSample(getClashIconsDir(), match.id, match.cropImage).catch(() => {});
+      }
     }
-    clashTracker.recordCardPlay(match.id, match.elixir);
-    if (store.get("telegramOnTrigger")) notifyTelegram(`🃏 Противник разыграл: ${match.name}`);
-    notifyClashState();
+    if (changed) notifyClashState();
   } catch (e) {
     // сбой одного тика сравнения не должен останавливать весь опрос
   } finally {
@@ -1094,6 +1113,7 @@ function startClashPolling(settings) {
   ensureClashTemplatesLoaded();
   clashLastSignature = null;
   clashScanInProgress = false;
+  clashLastCrop = null;
   clashPollTimer = setInterval(clashPollTick, Math.max(200, settings.pollIntervalMs));
   clashTickTimer = setInterval(() => {
     clashTracker.tick();
@@ -1973,7 +1993,8 @@ ipcMain.handle("textTrigger:pickRegion", async () => {
   return { ok: true, region };
 });
 
-// Область, где на экране появляется разыгранная противником карта, — та же рамка выделения.
+// Область всего игрового поля (не только половины противника — некоторые карты ставятся и на
+// свою половину тоже) — та же рамка выделения, что у OCR/триггеров.
 ipcMain.handle("clash:pickRegion", async () => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
   const region = await pickRegion();
@@ -1982,7 +2003,19 @@ ipcMain.handle("clash:pickRegion", async () => {
 });
 ipcMain.handle("clash:getCards", () => {
   const iconsDir = getClashIconsDir();
-  return CLASH_CARDS.map((c) => ({ ...c, iconUrl: pathToFileURL(path.join(iconsDir, `${c.id}.png`)).href }));
+  return CLASH_CARDS.map((c) => {
+    // Иконка для отображения в интерфейсе — любой первый образец из папки карты (placeholder,
+    // если реальных ещё нет); для самого распознавания используются ВСЕ файлы папки разом.
+    const dir = path.join(iconsDir, c.id);
+    let iconFile = "placeholder.png";
+    try {
+      const files = fs.readdirSync(dir).filter((f) => f.endsWith(".png"));
+      if (files.length) iconFile = files.includes("placeholder.png") ? "placeholder.png" : files[0];
+    } catch (e) {
+      // папка ещё не создана (шаблоны не загружались) — отдаём путь как есть, UI покажет "не найдено"
+    }
+    return { ...c, iconUrl: pathToFileURL(path.join(dir, iconFile)).href };
+  });
 });
 ipcMain.handle("clash:getState", () => clashTracker.getState());
 ipcMain.handle("clash:startMatch", () => {
@@ -1999,6 +2032,34 @@ ipcMain.handle("clash:startOvertime", () => {
 ipcMain.handle("clash:reset", () => {
   clashTracker.reset();
   clashLastDetectedAt = {};
+  notifyClashState();
+});
+// Ручная поправка — подстраховка на случай, если авто-распознавание юнита на поле ошиблось или
+// вообще пропустило розыгрыш (это не иконка карты в фиксированном месте — надёжность физически
+// ниже, чем была бы у обычного template-matching).
+ipcMain.handle("clash:recordManualPlay", (event, cardId) => {
+  const card = CLASH_CARDS.find((c) => c.id === cardId);
+  if (!card) return;
+  if (!clashTracker.isRunning()) clashTracker.start();
+  clashTracker.recordCardPlay(card.id, card.elixir);
+  // Самообучение от ручного ввода: если недавно была замечена область поля, которую авто-сравнение
+  // не смогло уверенно классифицировать (или вообще не проверяло) — вероятнее всего, пользователь
+  // сейчас подписывает именно её. Связываем этот кроп с указанной картой как обучающий образец.
+  if (clashLastCrop && Date.now() - clashLastCrop.at < 8000) {
+    const tmpl = clashTemplates && clashTemplates.find((c) => c.id === card.id);
+    if (tmpl) addSampleInMemory(tmpl, clashLastCrop.image);
+    saveNewSample(getClashIconsDir(), card.id, clashLastCrop.image).catch(() => {});
+    clashLastCrop = null; // не переиспользовать один и тот же кроп для двух разных ручных вводов подряд
+  }
+  logActivity(`🃏 Clash Royale: добавлено вручную — ${card.name}`);
+  notifyClashState();
+});
+ipcMain.handle("clash:undoLastPlay", () => {
+  const cardId = clashTracker.undoLastPlay();
+  if (cardId) {
+    const card = CLASH_CARDS.find((c) => c.id === cardId);
+    logActivity(`🃏 Clash Royale: отменена последняя запись — ${card ? card.name : cardId}`);
+  }
   notifyClashState();
 });
 // Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою

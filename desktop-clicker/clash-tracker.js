@@ -71,8 +71,22 @@ class ClashTracker {
   recordCardPlay(cardId, cost) {
     if (!this.startedAt) return;
     this.elixir = Math.max(0, this.elixir - cost);
-    this.playHistory.push({ cardId, at: Date.now() });
+    this.playHistory.push({ cardId, at: Date.now(), cost });
     if (!this.revealedOrder.includes(cardId)) this.revealedOrder.push(cardId);
+  }
+
+  // Отменяет последнюю засчитанную запись — на случай, если авто-распознавание (или ручной ввод)
+  // ошиблось. Возвращает потраченный эликсир и, если это было единственное появление карты,
+  // убирает её обратно из раскрытой колоды.
+  undoLastPlay() {
+    const last = this.playHistory.pop();
+    if (!last) return null;
+    this.elixir = Math.min(10, this.elixir + (last.cost || 0));
+    const stillPresent = this.playHistory.some((p) => p.cardId === last.cardId);
+    if (!stillPresent) {
+      this.revealedOrder = this.revealedOrder.filter((id) => id !== last.cardId);
+    }
+    return last.cardId;
   }
 
   getHandEstimate() {
@@ -96,6 +110,10 @@ class ClashTracker {
       revealedOrder: this.revealedOrder.slice(),
       inHand,
       inQueue,
+      // Последние записи — чтобы видеть, что реально засчиталось, и было что поправить кнопкой
+      // "отменить последнюю" (распознавание юнита на поле надёжностью не с иконкой карты, ошибки
+      // возможны).
+      recentPlays: this.playHistory.slice(-8).map((p) => ({ cardId: p.cardId, at: p.at })),
     };
   }
 }

@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld("api", {
   startClashMatch: () => ipcRenderer.invoke("clash:startMatch"),
   startClashOvertime: () => ipcRenderer.invoke("clash:startOvertime"),
   resetClash: () => ipcRenderer.invoke("clash:reset"),
+  recordClashManualPlay: (cardId) => ipcRenderer.invoke("clash:recordManualPlay", cardId),
+  undoClashLastPlay: () => ipcRenderer.invoke("clash:undoLastPlay"),
   onClashState: (callback) => ipcRenderer.on("clash:state", (_e, state) => callback(state)),
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),

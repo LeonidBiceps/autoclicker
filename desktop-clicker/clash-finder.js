@@ -1,29 +1,41 @@
-// Распознавание карты Clash Royale на экране: сканирует один регион (где на экране появляется
-// разыгранная противником карта — калибруется вручную самим пользователем, как и у обычного
-// триггера по картинке) против ВСЕЙ базы карт разом, а не одного образца, как у "Триггера по
-// картинке". Переиспользует движок сравнения из image-finder.js (matchOnce) — тот же алгоритм,
-// просто в цикле по многим образцам вместо одного.
+// Распознавание карты Clash Royale по появлению юнита НА ПОЛЕ БОЯ (не по иконке карты — в игре
+// нет такого элемента интерфейса: когда противник разыгрывает карту, всплывает не иконка, а сам
+// юнит, причём где угодно на поле — некоторые карты (Копатель, Гоблинская бочка, воздушные атаки)
+// ставятся и на твою половину тоже). Значит подход "маленький фиксированный регион + иконка из
+// меню колоды" в принципе не может работать — сравнивать нужно со скриншотами самих юнитов, и
+// искать по всему полю, а не в одной точке.
+//
+// Полный перебор по всему полю на каждый тик (matchOnce против ~100 шаблонов на каждой позиции)
+// был бы ещё тяжелее, чем прежний вариант, который уже лагал на маленьком регионе. Поэтому:
+//   1) поле разбивается на сетку ячеек (см. computeGridSignature) — на каждый тик дёшево
+//      считаем, какие ячейки вообще изменились с прошлого кадра (только там могло что-то
+//      появиться/двинуться);
+//   2) соседние изменившиеся ячейки группируются в прямоугольные "области интереса"
+//      (groupIntoRegions) — обычно 1-3 таких области на тик, а не всё поле;
+//   3) тяжёлая сверка со всей базой шаблонов (matchOnce) гоняется только внутри этих областей,
+//      а не по всему захваченному полю.
 const fs = require("fs");
 const path = require("path");
 const jimp = require("jimp");
-const { Region } = require("@nut-tree-fork/shared");
+const { Region, imageToJimp } = require("@nut-tree-fork/shared");
 const { matchOnce } = require("./image-finder");
 const { CLASH_CARDS } = require("./clash-cards");
 
-// Настоящих иконок карт в комплекте нет (это графика Supercell, встраивать её в приложение —
-// отдельный вопрос авторских прав, который сознательно не решаем автоматическим скачиванием
-// откуда-либо) — вместо них генерируем простую заглушку (цветной квадрат с подписью) для каждой
-// карты, чтобы движок сравнения можно было проверить уже сейчас. Как только появятся настоящие
-// иконки (свои же скриншоты из клиента игры) — файл с тем же id в этой папке просто заменяется,
-// код трогать не нужно.
-// Простой seeded PRNG (mulberry32) — детерминированный по id карты, но БЕЗ периодичности. Клетчатый
-// узор (два чередующихся цвета) казался проще, но у него ровно та проблема, для которой и нужен
-// coarse-to-fine поиск: при загрублении (COARSE_SCALE=4) повторяющийся паттерн алиасится сам на
-// себя со сдвигом на период, из-за чего грубый проход попадал в ложный, но "похожий" сдвиг, и
-// точный проход после этого уже не мог исправиться (радиус уточнения меньше периода узора) —
-// поймано именно на этом тесте (заглушки отличались друг от друга, но самосовпадение с самим собой
-// давало ~0.70 вместо ~1.0 из-за неправильно найденной позиции). Шумовая мозаика без периода этого
-// не допускает.
+// Сколько образцов юнита храним на карту максимум — сверка идёт против ВСЕХ образцов карты, так
+// что больше образцов = точнее (разные ракурсы/масштаб), но и медленнее. При превышении лимита
+// один из существующих образцов (случайный) вытесняется новым — простая эвристика без отслеживания
+// возраста/качества, но со временем набор остаётся разнообразным, а не бесконечно растёт.
+const MAX_SAMPLES_PER_CARD = 12;
+
+function cardSamplesDir(iconsDir, cardId) {
+  return path.join(iconsDir, cardId);
+}
+
+// --- Заглушки (пока нет настоящих скриншотов юнитов с поля) -----------------------------------
+// Настоящих скриншотов юнитов в комплекте нет и быть не может (это графика Supercell) — вместо
+// них генерируется шумовая заглушка на каждую карту, чтобы можно было проверить сам движок
+// сравнения уже сейчас. Как только появятся настоящие скриншоты (свои же кропы юнитов с поля во
+// время матчей) — файл с тем же id в этой папке заменяется, код трогать не нужно.
 function mulberry32(seed) {
   let a = seed;
   return function () {
@@ -34,20 +46,15 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
 function hashOf(id) {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   return hash >>> 0;
 }
-
 let cachedFont = null;
-// Заглушка — шумовая мозаика (блоки псевдослучайного цвета, детерминированные по id карты) с
-// подписью поверх. Настоящие иконки карт (когда появятся) и так будут с реальной текстурой
-// рисунка — это только для проверки самого движка распознавания на месте будущих настоящих файлов.
 async function generatePlaceholderIcon(card, filePath) {
-  const size = 64;
-  const blockSize = 8;
+  const size = 48; // юниты на поле мельче иконок из меню — заглушка тоже поменьше
+  const blockSize = 6;
   const rand = mulberry32(hashOf(card.id));
   const img = new jimp(size, size);
   for (let by = 0; by < size; by += blockSize) {
@@ -60,26 +67,32 @@ async function generatePlaceholderIcon(card, filePath) {
       }
     }
   }
-  if (!cachedFont) cachedFont = await jimp.loadFont(jimp.FONT_SANS_16_WHITE);
-  // Шрифт FONT_SANS_16_WHITE — только ASCII, а имена карт на русском, поэтому подписываем id
-  // (латиница, уже читаемо) вместо name, чтобы не рисовать "???".
-  img.print(cachedFont, 2, 2, { text: card.id, alignmentX: jimp.HORIZONTAL_ALIGN_CENTER, alignmentY: jimp.VERTICAL_ALIGN_MIDDLE }, size - 4, size - 4);
+  if (!cachedFont) cachedFont = await jimp.loadFont(jimp.FONT_SANS_8_WHITE);
+  img.print(cachedFont, 1, 1, { text: card.id, alignmentX: jimp.HORIZONTAL_ALIGN_CENTER, alignmentY: jimp.VERTICAL_ALIGN_MIDDLE }, size - 2, size - 2);
   await img.writeAsync(filePath);
 }
 
-// Гарантирует, что у каждой карты есть файл иконки в iconsDir (заглушка, если настоящей ещё нет).
+// У каждой карты — своя папка с образцами (не один файл): по мере игры сюда добавляются новые
+// кропы юнита с поля (см. saveNewSample), а заглушка (placeholder.png) удаляется, как только
+// появляется первый настоящий образец — не хотим, чтобы она разбавляла сравнение до конца жизни.
 async function ensureCardIcons(iconsDir) {
   fs.mkdirSync(iconsDir, { recursive: true });
   for (const card of CLASH_CARDS) {
-    const filePath = path.join(iconsDir, `${card.id}.png`);
-    if (!fs.existsSync(filePath)) {
-      await generatePlaceholderIcon(card, filePath);
+    const dir = cardSamplesDir(iconsDir, card.id);
+    // Миграция со старой схемы (один плоский файл <id>.png — это была иконка карты из меню,
+    // другая семантика вообще) — она тут больше не нужна и мешала бы, просто убираем.
+    const legacyFlatFile = path.join(iconsDir, `${card.id}.png`);
+    if (fs.existsSync(legacyFlatFile) && fs.statSync(legacyFlatFile).isFile()) {
+      fs.unlinkSync(legacyFlatFile);
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    const existing = fs.readdirSync(dir).filter((f) => f.endsWith(".png"));
+    if (existing.length === 0) {
+      await generatePlaceholderIcon(card, path.join(dir, "placeholder.png"));
     }
   }
 }
 
-// Грузит картинку файла в "Image"-форму, которую понимает matchOnce() — независимо от
-// screen.config.resourceDirectory (та глобальная настройка уже занята под "Триггер по картинке").
 async function loadImageFile(filePath) {
   const img = await jimp.read(filePath);
   return {
@@ -90,92 +103,234 @@ async function loadImageFile(filePath) {
   };
 }
 
-// Грузит все шаблоны карт разом (по одному разу на сеанс распознавания, не на каждый опрос) —
-// картинки маленькие, но незачем перечитывать с диска и заново декодировать PNG каждые 400-1000мс.
 async function loadCardTemplates(iconsDir) {
   await ensureCardIcons(iconsDir);
   const templates = [];
   for (const card of CLASH_CARDS) {
-    const filePath = path.join(iconsDir, `${card.id}.png`);
-    try {
-      const needleImage = await loadImageFile(filePath);
-      templates.push({ ...card, needleImage });
-    } catch (e) {
-      // повреждённый/нечитаемый файл иконки — пропускаем эту карту, не валим весь опрос целиком
+    const dir = cardSamplesDir(iconsDir, card.id);
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".png"));
+    const needleImages = [];
+    for (const f of files) {
+      try {
+        needleImages.push(await loadImageFile(path.join(dir, f)));
+      } catch (e) {
+        // повреждённый/нечитаемый файл конкретного образца — пропускаем именно его
+      }
     }
+    if (needleImages.length) templates.push({ ...card, needleImages });
   }
   return templates;
 }
 
-// Дешёвая "подпись" кадра — среднее R/G/B по сетке 8x8 клеток. Сравнение со ВСЕЙ базой карт
-// (matchOnce на каждый из ~100 шаблонов) — тяжёлая синхронная математика на главном процессе
-// Electron (там же крутится тайминг самих кликов), и гонять её на каждый тик опроса, даже когда
-// на экране ничего не изменилось с прошлого раза, — это и есть основная причина подтормаживаний
-// при включённом отслеживании. Кадр без изменений (подавляющее большинство тиков — карта
-// разыгрывается редко) обходится в O(ширина×высота) на сложение, а не в тяжёлую корреляцию по
-// всем шаблонам — и просто пропускается.
-const SIGNATURE_GRID = 8;
-function computeSignature(image) {
-  const { width, height, data } = image;
-  const cells = SIGNATURE_GRID;
-  const sums = new Float64Array(cells * cells * 3);
-  const counts = new Int32Array(cells * cells);
-  const cw = Math.max(1, Math.ceil(width / cells));
-  const ch = Math.max(1, Math.ceil(height / cells));
-  for (let y = 0; y < height; y++) {
-    const cy = Math.min(cells - 1, Math.floor(y / ch));
-    for (let x = 0; x < width; x++) {
-      const cx = Math.min(cells - 1, Math.floor(x / cw));
-      const cellIdx = cy * cells + cx;
-      const p = (y * width + x) * 4;
-      sums[cellIdx * 3] += data[p];
-      sums[cellIdx * 3 + 1] += data[p + 1];
-      sums[cellIdx * 3 + 2] += data[p + 2];
-      counts[cellIdx]++;
+// Добавляет новый образец в уже загруженный в памяти список шаблонов карты (без перечитывания
+// файлов с диска) — используется сразу после того, как saveNewSample записала его на диск, чтобы
+// новый образец начал учитываться в сравнении немедленно, а не только после перезапуска.
+function addSampleInMemory(card, image) {
+  if (!card.needleImages) card.needleImages = [];
+  if (card.needleImages.length >= MAX_SAMPLES_PER_CARD) {
+    card.needleImages.splice(Math.floor(Math.random() * card.needleImages.length), 1);
+  }
+  card.needleImages.push(image);
+}
+
+// Сохраняет новый кроп с поля как обучающий образец карты — либо от уверенного авто-распознавания,
+// либо от ручной поправки пользователя (см. main.js). image — то же {width,height,data,colorMode},
+// что возвращает scanForCard/nutScreen.grabRegion; imageToJimp корректно разворачивает каналы под
+// PNG независимо от colorMode, так же как это уже делает matchOnce при сравнении.
+async function saveNewSample(iconsDir, cardId, image) {
+  const dir = cardSamplesDir(iconsDir, cardId);
+  fs.mkdirSync(dir, { recursive: true });
+  const placeholderPath = path.join(dir, "placeholder.png");
+  // Windows блокирует файл от удаления, пока он открыт где-то ещё (например, показан в UI как
+  // <img src="file://...">) — это не повод проваливать сохранение нового образца, попробуем
+  // убрать заглушку ещё раз в другой раз (round-robin ниже рано или поздно вытеснит её сам).
+  try {
+    if (fs.existsSync(placeholderPath)) fs.rmSync(placeholderPath, { force: true });
+  } catch (e) {
+    // EBUSY и подобное — не критично, см. комментарий выше
+  }
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".png"));
+  if (files.length >= MAX_SAMPLES_PER_CARD) {
+    const victim = files[Math.floor(Math.random() * files.length)];
+    try {
+      fs.rmSync(path.join(dir, victim), { force: true });
+    } catch (e) {
+      // тоже может быть занят — просто оставляем на этот раз, лимит не критичен для одной единицы
     }
   }
-  for (let i = 0; i < cells * cells; i++) {
+  const jimpImg = imageToJimp(image);
+  await jimpImg.writeAsync(path.join(dir, `sample-${Date.now()}.png`));
+}
+
+// --- Сетка ячеек для motion-detection по всему полю -------------------------------------------
+
+const DEFAULT_CELL_SIZE = 40; // примерный размер ячейки в пикселях экрана — меньше типичного юнита
+
+function computeGridSignature(image, cellSize) {
+  const { width, height, data } = image;
+  const cols = Math.max(1, Math.ceil(width / cellSize));
+  const rows = Math.max(1, Math.ceil(height / cellSize));
+  const sums = new Float64Array(cols * rows * 3);
+  const counts = new Int32Array(cols * rows);
+  for (let y = 0; y < height; y++) {
+    const cy = Math.min(rows - 1, Math.floor(y / cellSize));
+    for (let x = 0; x < width; x++) {
+      const cx = Math.min(cols - 1, Math.floor(x / cellSize));
+      const idx = cy * cols + cx;
+      const p = (y * width + x) * 4;
+      sums[idx * 3] += data[p];
+      sums[idx * 3 + 1] += data[p + 1];
+      sums[idx * 3 + 2] += data[p + 2];
+      counts[idx]++;
+    }
+  }
+  for (let i = 0; i < cols * rows; i++) {
     const c = counts[i] || 1;
     sums[i * 3] /= c;
     sums[i * 3 + 1] /= c;
     sums[i * 3 + 2] /= c;
   }
-  return sums;
+  return { cols, rows, cellSize, values: sums };
 }
 
-// Порог в единицах среднего значения канала (0-255) на клетку сетки — подобран с запасом
-// ниже обычного шума перекодирования кадра, чтобы не пропустить реально появившуюся иконку.
-const SIGNATURE_CHANGE_THRESHOLD = 3;
-function signatureChanged(a, b) {
-  if (!a || !b || a.length !== b.length) return true;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
-  return diff / a.length > SIGNATURE_CHANGE_THRESHOLD;
-}
-
-// Один тик распознавания: снимает регион один раз. Если картинка не изменилась с прошлого тика
-// (prevSignature) — не сравнивает со всеми шаблонами вообще (см. computeSignature выше). Если
-// изменилась — сравнивает со ВСЕМИ шаблонами, отдавая событийному циклу передышку каждые
-// YIELD_EVERY карт (иначе один скан — это одна сплошная синхронная пауза на ~полсекунды,
-// в течение которой подвиснет и сама автоматизация кликов).
-const YIELD_EVERY = 12;
-async function scanForCard(nutScreen, region, templates, confidenceThreshold, prevSignature) {
-  const haystack = await nutScreen.grabRegion(new Region(region.x, region.y, region.width, region.height));
-  const signature = computeSignature(haystack);
-  if (prevSignature && !signatureChanged(prevSignature, signature)) {
-    return { match: null, signature };
+// Порог чуть грубее, чем у прежней "подписи на весь регион" — ячейки маленькие (40x40), и
+// обычный шум перекодирования кадра на таком масштабе заметнее.
+const CELL_CHANGE_THRESHOLD = 10;
+function findChangedCells(prev, next) {
+  const changed = [];
+  for (let i = 0; i < next.cols * next.rows; i++) {
+    const dr = Math.abs(prev.values[i * 3] - next.values[i * 3]);
+    const dg = Math.abs(prev.values[i * 3 + 1] - next.values[i * 3 + 1]);
+    const db = Math.abs(prev.values[i * 3 + 2] - next.values[i * 3 + 2]);
+    if ((dr + dg + db) / 3 > CELL_CHANGE_THRESHOLD) changed.push(i);
   }
-  let best = null;
-  let i = 0;
-  for (const card of templates) {
-    const { confidence } = await matchOnce(haystack, card.needleImage);
-    if (confidence >= confidenceThreshold && (!best || confidence > best.confidence)) {
-      best = { id: card.id, name: card.name, elixir: card.elixir, confidence };
+  return changed;
+}
+
+// Соседние изменившиеся ячейки — это, скорее всего, один и тот же появившийся/двигающийся юнит,
+// а не несколько независимых событий. Группируем их через обход в ширину (4-связность) в
+// прямоугольные "области интереса" и расширяем каждую на padCells ячеек в каждую сторону —
+// силуэт юнита почти всегда больше одной ячейки 40x40, а motion-detection могла зацепить только
+// его часть (например, только ноги, если верх пока сливается с фоном).
+function groupIntoRegions(changedCells, cols, rows, padCells = 1) {
+  const changedSet = new Set(changedCells);
+  const visited = new Set();
+  const boxes = [];
+  for (const start of changedCells) {
+    if (visited.has(start)) continue;
+    const queue = [start];
+    visited.add(start);
+    let minX = start % cols, maxX = start % cols, minY = Math.floor(start / cols), maxY = Math.floor(start / cols);
+    while (queue.length) {
+      const cur = queue.shift();
+      const cx = cur % cols, cy = Math.floor(cur / cols);
+      minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
+      minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
+      const candidates = [];
+      if (cx > 0) candidates.push(cur - 1);
+      if (cx < cols - 1) candidates.push(cur + 1);
+      if (cy > 0) candidates.push(cur - cols);
+      if (cy < rows - 1) candidates.push(cur + cols);
+      for (const n of candidates) {
+        if (changedSet.has(n) && !visited.has(n)) {
+          visited.add(n);
+          queue.push(n);
+        }
+      }
     }
-    i++;
-    if (i % YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve));
+    boxes.push({
+      cellX0: Math.max(0, minX - padCells),
+      cellY0: Math.max(0, minY - padCells),
+      cellX1: Math.min(cols - 1, maxX + padCells),
+      cellY1: Math.min(rows - 1, maxY + padCells),
+    });
   }
-  return { match: best, signature };
+  return boxes;
 }
 
-module.exports = { ensureCardIcons, loadCardTemplates, scanForCard };
+function cellBoxToPixels(box, cellSize, haystackWidth, haystackHeight) {
+  const x = box.cellX0 * cellSize;
+  const y = box.cellY0 * cellSize;
+  const w = Math.min(haystackWidth - x, (box.cellX1 - box.cellX0 + 1) * cellSize);
+  const h = Math.min(haystackHeight - y, (box.cellY1 - box.cellY0 + 1) * cellSize);
+  return { x, y, width: w, height: h };
+}
+
+// Вырезает прямоугольный кусок из Image-подобного объекта {width,height,data,colorMode} —
+// то, что возвращает nutScreen.grabRegion() и чего просит matchOnce().
+function cropImage(image, x, y, w, h) {
+  const { width, data, colorMode } = image;
+  const out = Buffer.alloc(w * h * 4);
+  for (let row = 0; row < h; row++) {
+    const srcStart = ((y + row) * width + x) * 4;
+    const destStart = row * w * 4;
+    data.copy(out, destStart, srcStart, srcStart + w * 4);
+  }
+  return { width: w, height: h, data: out, colorMode };
+}
+
+// --- Основной цикл распознавания ----------------------------------------------------------------
+
+const YIELD_EVERY = 12; // передышка событийному циклу каждые N сравнений — иначе один тик со
+// сравнением по нескольким областям интереса это одна сплошная синхронная пауза, во время
+// которой подвиснет и сама автоматизация кликов.
+
+async function matchAgainstTemplates(haystackCrop, templates, confidenceThreshold, yieldCounter) {
+  if (haystackCrop.width < 4 || haystackCrop.height < 4) return null;
+  let best = null;
+  for (const card of templates) {
+    let cardBest = 0;
+    for (const needle of card.needleImages) {
+      if (needle.width > haystackCrop.width || needle.height > haystackCrop.height) continue;
+      const { confidence } = await matchOnce(haystackCrop, needle);
+      if (confidence > cardBest) cardBest = confidence;
+      yieldCounter.n++;
+      if (yieldCounter.n % YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve));
+    }
+    if (cardBest >= confidenceThreshold && (!best || cardBest > best.confidence)) {
+      best = { id: card.id, name: card.name, elixir: card.elixir, confidence: cardBest };
+    }
+  }
+  return best;
+}
+
+// Один тик распознавания: снимает поле один раз. Первый тик (нет prevSignature) или смена
+// размера региона — просто запоминаем кадр как точку отсчёта, БЕЗ сверки с базой: нет смысла
+// (и небезопасно по ложным срабатываниям) искать по всему захваченному полю целиком — юнит,
+// который уже был на поле в момент включения, не так важен, как то, что появится дальше. Дальше
+// на каждый тик сверяются только изменившиеся с прошлого кадра области.
+// Возвращает МАССИВ совпадений (за один тик может одновременно проявиться больше одной карты —
+// например, ты и противник играете картами почти одновременно в разных частях поля).
+async function scanForCard(nutScreen, region, templates, confidenceThreshold, prevSignature, cellSize = DEFAULT_CELL_SIZE) {
+  const haystack = await nutScreen.grabRegion(new Region(region.x, region.y, region.width, region.height));
+  const signature = computeGridSignature(haystack, cellSize);
+
+  if (!prevSignature || prevSignature.cols !== signature.cols || prevSignature.rows !== signature.rows) {
+    return { matches: [], signature, lastCrop: null };
+  }
+
+  const yieldCounter = { n: 0 };
+  const changedCells = findChangedCells(prevSignature, signature);
+  if (changedCells.length === 0) return { matches: [], signature, lastCrop: null };
+
+  const boxes = groupIntoRegions(changedCells, signature.cols, signature.rows, 1);
+  const matches = [];
+  let lastCrop = null;
+  for (const box of boxes) {
+    const px = cellBoxToPixels(box, cellSize, haystack.width, haystack.height);
+    const crop = cropImage(haystack, px.x, px.y, px.width, px.height);
+    lastCrop = crop; // для ручной поправки — последняя обработанная область интереса на этот тик,
+    // даже если её не удалось распознать; см. main.js clash:recordManualPlay
+    const best = await matchAgainstTemplates(crop, templates, confidenceThreshold, yieldCounter);
+    if (best) {
+      matches.push({
+        ...best,
+        region: { x: region.x + px.x, y: region.y + px.y, width: px.width, height: px.height },
+        cropImage: crop, // для самообучения — см. main.js clashPollTick
+      });
+    }
+  }
+  return { matches, signature, lastCrop };
+}
+
+module.exports = { ensureCardIcons, loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory, MAX_SAMPLES_PER_CARD };
