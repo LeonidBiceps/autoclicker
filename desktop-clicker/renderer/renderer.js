@@ -236,6 +236,7 @@ function updateProUI() {
     "sequenceClickAllEnabled",
     "clashEnabled",
     "clashPickRegionBtn",
+    "clashPickMatchActiveBtn",
     "clashConfidenceSlider",
     "clashConfidence",
     "clashMatchDuration",
@@ -246,6 +247,7 @@ function updateProUI() {
     "clashManualCardInput",
     "clashManualAddBtn",
     "clashUndoBtn",
+    "clashOpenReviewBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -394,12 +396,20 @@ function renderClashSettings() {
   hint.textContent = cfg.region
     ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
     : "Область не выбрана.";
+  const activeHint = document.getElementById("clashMatchActiveHint");
+  activeHint.textContent = cfg.matchActiveTemplateFile
+    ? "Настроено — матч определяется по иконке эликсира."
+    : "Не настроено — счётчик стартует по первой распознанной карте (менее надёжно).";
 }
 
 function renderClashDeck(state, clashCardsById) {
   document.getElementById("clashElixirValue").textContent = state.elixir.toFixed(1);
   const phaseLabel = document.getElementById("clashPhaseLabel");
   phaseLabel.textContent = state.overtime ? "x3 (овертайм)" : state.phaseMultiplier >= 2 ? "x2" : "x1";
+  const matchActiveLabel = document.getElementById("clashMatchActiveLabel");
+  if (matchActiveLabel) {
+    matchActiveLabel.textContent = state.matchActive === true ? "🟢 матч идёт" : state.matchActive === false ? "⚪ вне боя" : "";
+  }
   const grid = document.getElementById("clashDeckGrid");
   const slots = [];
   for (let i = 0; i < 8; i++) {
@@ -434,6 +444,16 @@ function renderClashDeck(state, clashCardsById) {
     }
   }
 }
+
+function setClashReviewCount(count) {
+  const badge = document.getElementById("clashReviewCount");
+  if (!badge) return;
+  badge.textContent = count ? String(count) : "";
+  badge.hidden = count === 0;
+}
+
+// Сам список теперь в отдельном окне (см. clash-review.html) — здесь только счётчик рядом с
+// кнопкой "Открыть разбор матча", обновляется через onClashPendingReviewCount ниже.
 
 function updateScheduleFieldsVisibility() {
   const mode = document.getElementById("scheduleRepeat").value;
@@ -868,6 +888,14 @@ function bindHandlers() {
       renderClashSettings();
     }
   });
+  document.getElementById("clashPickMatchActiveBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickClashMatchActiveTemplate();
+    if (result.ok) {
+      await save({ clashTracker: { ...settings.clashTracker, matchActiveTemplateFile: result.templateFile } });
+      renderClashSettings();
+    }
+  });
   document.getElementById("clashConfidenceSlider").addEventListener("input", (e) => {
     document.getElementById("clashConfidence").value = e.target.value;
   });
@@ -896,6 +924,7 @@ function bindHandlers() {
     window.api.recordClashManualPlay(card.id);
     input.value = "";
   });
+  document.getElementById("clashOpenReviewBtn").addEventListener("click", () => window.api.openClashReviewWindow());
 
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
@@ -1518,6 +1547,7 @@ async function init() {
     .join("");
   renderClashDeck(await window.api.getClashState(), clashCardsById);
   window.api.onClashState((state) => renderClashDeck(state, clashCardsById));
+  window.api.onClashPendingReviewCount((count) => setClashReviewCount(count));
 }
 
 init();

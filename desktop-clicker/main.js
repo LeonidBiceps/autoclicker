@@ -33,6 +33,7 @@ const Tesseract = require("tesseract.js");
 const { CLASH_CARDS } = require("./clash-cards");
 const { ClashTracker } = require("./clash-tracker");
 const { loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory } = require("./clash-finder");
+const { imageToJimp } = require("@nut-tree-fork/shared");
 
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
@@ -76,11 +77,57 @@ let clashTemplates = null; // загружаются лениво при пер�
 let clashTemplatesLoadingPromise = null;
 let clashPollTimer = null;
 let clashTickTimer = null;
+let clashMatchActiveTimer = null;
+let clashMatchActive = false; // определяется по отдельному маленькому шаблону (иконка эликсира) — надёжнее, чем ждать первую распознанную карту
 let clashLastDetectedAt = {}; // cardId -> ts последнего засчитанного розыгрыша (защита от "залипания" одной и той же карты на экране)
 let clashLastSignature = null; // "подпись" предыдущего кадра региона — см. computeSignature в clash-finder.js
 let clashScanInProgress = false; // защита от наложения тиков: если сравнение затянулось дольше pollIntervalMs, новый тик не запускается поверх
 let clashLastCrop = null; // { image, at } — последняя обработанная область интереса поля, для привязки ручной поправки к обучающему образцу
 const CLASH_AUTO_LEARN_CONFIDENCE = 0.93; // выше обычного порога подтверждения — сохраняем как обучающий образец только очень уверенные авто-совпадения
+
+// Некоторые карты сами порождают других юнитов (Хижина гоблинов время от времени спавнит
+// Гоблина с копьями, Кладбище как заклинание высыпает Скелетов и т.д. — см. поле spawns в
+// clash-cards.js). Такой спавн — не новый самостоятельный розыгрыш карты, и не должен считаться
+// заново каждый раз, когда появляется рядом с уже разыгранным "спавнером". Грубое приближение
+// (без честного отслеживания жизни здания на поле): пока не прошло CLASH_SPAWN_SUPPRESS_MS с
+// момента розыгрыша спавнера, любой его spawns-юнит, замечённый поблизости, подавляется.
+let clashActiveSpawners = []; // [{ spawns: string[], region, until }]
+const CLASH_SPAWN_SUPPRESS_MS = 45000;
+const CLASH_SPAWN_SUPPRESS_DISTANCE_PX = 150;
+function regionsClose(a, b, maxDist) {
+  const acx = a.x + a.width / 2, acy = a.y + a.height / 2;
+  const bcx = b.x + b.width / 2, bcy = b.y + b.height / 2;
+  return Math.hypot(acx - bcx, acy - bcy) <= maxDist;
+}
+function isSuppressedSpawn(match) {
+  const now = Date.now();
+  clashActiveSpawners = clashActiveSpawners.filter((s) => s.until > now);
+  return clashActiveSpawners.some((s) => s.spawns.includes(match.id) && regionsClose(s.region, match.region, CLASH_SPAWN_SUPPRESS_DISTANCE_PX));
+}
+
+// Очередь "непонятных" областей поля (не прошли порог confidence) — вживую во время матча
+// подписывать их некогда, но после боя можно спокойно разобрать: что здесь было? Это и есть
+// способ наполнить базу образцов реальными данными без необходимости успевать в реальном времени.
+let clashPendingReview = []; // [{ id, image, at, region }]
+let clashPendingReviewSeq = 0;
+const CLASH_PENDING_REVIEW_MAX = 24; // не копим бесконечно — старые вытесняются новыми
+const CLASH_PENDING_REVIEW_DEDUPE_MS = 3000; // не класть в очередь второй раз то же место экрана — это, скорее всего, тот же двигающийся юнит, а не новое событие
+function regionsOverlap(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+function pushPendingReview(image, region) {
+  const now = Date.now();
+  const recentSameSpot = clashPendingReview.some((p) => now - p.at < CLASH_PENDING_REVIEW_DEDUPE_MS && regionsOverlap(p.region, region));
+  if (recentSameSpot) return;
+  if (clashPendingReview.length >= CLASH_PENDING_REVIEW_MAX) clashPendingReview.shift();
+  clashPendingReview.push({ id: ++clashPendingReviewSeq, image, at: now, region });
+  notifyClashPendingReview();
+}
+function notifyClashPendingReview() {
+  const count = clashPendingReview.length;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("clash:pendingReviewCount", count);
+  if (clashReviewWindow && !clashReviewWindow.isDestroyed()) clashReviewWindow.webContents.send("clash:pendingReviewCount", count);
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -552,6 +599,30 @@ function destroyClashHud() {
     clashHudWindow.close();
     clashHudWindow = null;
   }
+}
+
+// Отдельное окно для разбора матча — обычное, с рамкой, чтобы можно было держать его открытым
+// рядом с игрой и не спеша листать/увеличивать кропы, а не искать этот список в общих настройках.
+let clashReviewWindow = null;
+function createClashReviewWindow() {
+  if (clashReviewWindow && !clashReviewWindow.isDestroyed()) {
+    clashReviewWindow.focus();
+    return;
+  }
+  clashReviewWindow = new BrowserWindow({
+    width: 640,
+    height: 720,
+    minWidth: 420,
+    minHeight: 400,
+    title: "Разбор матча — Clash Royale",
+    icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, "clash-review-preload.js") },
+  });
+  clashReviewWindow.setMenuBarVisibility(false);
+  clashReviewWindow.loadFile(path.join(__dirname, "renderer", "clash-review.html"));
+  clashReviewWindow.on("closed", () => {
+    clashReviewWindow = null;
+  });
 }
 
 // --- Журнал активности: краткая история значимых событий (для отладки автоматизации) ---
@@ -1033,10 +1104,42 @@ function getClashIconsDir() {
   return dir;
 }
 
+function getClashStateWithMatchActive() {
+  const hasMatchActiveTemplate = !!store.get("clashTracker").matchActiveTemplateFile;
+  return { ...clashTracker.getState(), matchActive: hasMatchActiveTemplate ? clashMatchActive : null };
+}
+
 function notifyClashState() {
-  const state = clashTracker.getState();
+  const state = getClashStateWithMatchActive();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("clash:state", state);
   if (clashHudWindow && !clashHudWindow.isDestroyed()) clashHudWindow.webContents.send("clash:state", state);
+}
+
+// Идёт ли матч прямо сейчас — определяем по маленькому статичному шаблону (иконка эликсира,
+// видна только во время боя, всегда в одном месте относительно игрового окна), а не по тому,
+// распозналась ли уже хоть одна карта — так надёжнее и не зависит от качества базы образцов.
+// Переиспользует тот же JimpImageFinder/screen.find(), что и "Триггер по картинке".
+async function checkClashMatchActive() {
+  const settings = store.get("clashTracker");
+  if (!settings.matchActiveTemplateFile) return; // не настроено — просто ничего не делаем, не мешаем старому поведению
+  let active = false;
+  try {
+    await nutScreen.find(imageResource(settings.matchActiveTemplateFile), { confidence: settings.matchActiveConfidence || 0.85 });
+    active = true;
+  } catch (e) {
+    active = false;
+  }
+  if (active === clashMatchActive) return;
+  clashMatchActive = active;
+  if (active) {
+    if (!clashTracker.isRunning()) {
+      clashTracker.start();
+      logActivity("🃏 Clash Royale: матч начался (по индикатору боя)");
+    }
+  } else {
+    logActivity("🃏 Clash Royale: матч завершён (индикатор боя пропал)");
+  }
+  notifyClashState();
 }
 
 function ensureClashTemplatesLoaded() {
@@ -1056,6 +1159,10 @@ function ensureClashTemplatesLoaded() {
 async function clashPollTick() {
   const settings = store.get("clashTracker");
   if (!settings.enabled || !settings.region || !clashTemplates) return;
+  // Если настроен индикатор боя и сейчас матч не идёт — незачем сканировать поле вообще (там
+  // меню/магазин/что угодно, не имеющее отношения к игре) — экономим CPU и не плодим мусорные
+  // записи в очереди на разбор.
+  if (settings.matchActiveTemplateFile && !clashMatchActive) return;
   // Сравнение с базой шаблонов (matchOnce на каждую карту в каждой изменившейся области поля) —
   // тяжёлая синхронная работа на главном процессе, том же, что считает тайминг самих кликов. Если
   // предыдущий тик почему-то ещё не закончился (медленная машина, большая область) — не запускаем
@@ -1063,7 +1170,7 @@ async function clashPollTick() {
   if (clashScanInProgress) return;
   clashScanInProgress = true;
   try {
-    const { matches, signature, lastCrop } = await scanForCard(
+    const { matches, signature, lastCrop, unmatched } = await scanForCard(
       nutScreen,
       settings.region,
       clashTemplates,
@@ -1076,9 +1183,13 @@ async function clashPollTick() {
     // если следующим шагом пользователь вручную укажет карту (см. clash:recordManualPlay), скорее
     // всего он имел в виду именно её.
     if (lastCrop) clashLastCrop = { image: lastCrop, at: Date.now() };
+    // Всё, что не распозналось живьём, — в очередь на неспешный разбор после матча (см.
+    // clashPendingReview выше): именно так база и наполняется реальными образцами.
+    for (const u of unmatched) pushPendingReview(u.cropImage, u.region);
     if (!matches.length) return;
     let changed = false;
     for (const match of matches) {
+      if (isSuppressedSpawn(match)) continue; // скорее всего спавн от недавно разыгранной карты (см. spawns в clash-cards.js), не отдельный розыгрыш
       const lastAt = clashLastDetectedAt[match.id] || 0;
       if (Date.now() - lastAt < settings.cooldownMs) continue; // тот же юнит ещё в кадре (двигается) с прошлого тика — не считаем повторно
       clashLastDetectedAt[match.id] = Date.now();
@@ -1091,6 +1202,10 @@ async function clashPollTick() {
       clashTracker.recordCardPlay(match.id, match.elixir);
       if (store.get("telegramOnTrigger")) notifyTelegram(`🃏 Противник разыграл: ${match.name}`);
       changed = true;
+      const cardDef = CLASH_CARDS.find((c) => c.id === match.id);
+      if (cardDef && cardDef.spawns && cardDef.spawns.length) {
+        clashActiveSpawners.push({ spawns: cardDef.spawns, region: match.region, until: Date.now() + CLASH_SPAWN_SUPPRESS_MS });
+      }
       // Самообучение: очень уверенное авто-совпадение — почти наверняка верное, сохраняем этот
       // кроп как ещё один образец карты (новый ракурс/масштаб) на будущее, не дожидаясь, пока
       // пользователь пришлёт готовые скриншоты вручную.
@@ -1114,18 +1229,26 @@ function startClashPolling(settings) {
   clashLastSignature = null;
   clashScanInProgress = false;
   clashLastCrop = null;
+  clashMatchActive = false;
+  clashActiveSpawners = [];
   clashPollTimer = setInterval(clashPollTick, Math.max(200, settings.pollIntervalMs));
   clashTickTimer = setInterval(() => {
     clashTracker.tick();
     notifyClashState();
   }, 200);
+  // Отдельный, более редкий таймер — проверка "идёт ли матч" дешёвая (один маленький шаблон), но
+  // незачем гонять её так же часто, как сканирование всего поля.
+  clashMatchActiveTimer = setInterval(checkClashMatchActive, 1000);
+  checkClashMatchActive();
 }
 
 function stopClashPolling() {
   if (clashPollTimer) clearInterval(clashPollTimer);
   if (clashTickTimer) clearInterval(clashTickTimer);
+  if (clashMatchActiveTimer) clearInterval(clashMatchActiveTimer);
   clashPollTimer = null;
   clashTickTimer = null;
+  clashMatchActiveTimer = null;
 }
 
 // --- Key capture (for keyboard auto-press mode) ---
@@ -2001,6 +2124,23 @@ ipcMain.handle("clash:pickRegion", async () => {
   if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
   return { ok: true, region };
 });
+// Снимок маленькой области с иконкой эликсира — делать ТОЛЬКО во время реального боя (сама
+// иконка видна лишь тогда). По ней дальше определяем "матч идёт/не идёт" — тот же принцип, что у
+// "Триггера по картинке" (screen.find + сохранённый образец), файл лежит в той же папке
+// (screen.config.resourceDirectory общий на всё приложение).
+ipcMain.handle("clash:pickMatchActiveTemplate", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  const dir = getImageTemplatesDir();
+  const baseName = "clash-match-active";
+  try {
+    await nutScreen.captureRegion(baseName, new Region(region.x, region.y, region.width, region.height), FileType.PNG, dir);
+    return { ok: true, templateFile: `${baseName}.png` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 ipcMain.handle("clash:getCards", () => {
   const iconsDir = getClashIconsDir();
   return CLASH_CARDS.map((c) => {
@@ -2017,7 +2157,7 @@ ipcMain.handle("clash:getCards", () => {
     return { ...c, iconUrl: pathToFileURL(path.join(dir, iconFile)).href };
   });
 });
-ipcMain.handle("clash:getState", () => clashTracker.getState());
+ipcMain.handle("clash:getState", () => getClashStateWithMatchActive());
 ipcMain.handle("clash:startMatch", () => {
   clashTracker.start();
   clashLastDetectedAt = {};
@@ -2061,6 +2201,45 @@ ipcMain.handle("clash:undoLastPlay", () => {
     logActivity(`🃏 Clash Royale: отменена последняя запись — ${card ? card.name : cardId}`);
   }
   notifyClashState();
+});
+// Неспешный разбор после матча: список областей поля, которые не удалось распознать живьём —
+// каждая как data URL, чтобы renderer мог показать превью без временных файлов на диске.
+ipcMain.handle("clash:getPendingReview", async () => {
+  const items = [];
+  for (const p of clashPendingReview) {
+    try {
+      const dataUrl = await imageToJimp(p.image).getBase64Async("image/png");
+      items.push({ id: p.id, at: p.at, dataUrl });
+    } catch (e) {
+      // повреждённый кроп — пропускаем именно его, не валим весь список
+    }
+  }
+  return items;
+});
+// cardId указан — сохраняем кроп как обучающий образец этой карты (см. saveNewSample/
+// addSampleInMemory); cardId пустой — просто убираем из очереди без сохранения ("это не карта").
+// Live-состояние матча (эликсир/цикл) здесь НЕ трогаем — разбор идёт постфактум, когда матч уже
+// не идёт, единственная польза — обучение базы образцов.
+ipcMain.handle("clash:resolvePendingReview", (event, reviewId, cardId) => {
+  const idx = clashPendingReview.findIndex((p) => p.id === reviewId);
+  if (idx === -1) return;
+  const [item] = clashPendingReview.splice(idx, 1);
+  if (cardId) {
+    const card = CLASH_CARDS.find((c) => c.id === cardId);
+    if (card) {
+      const tmpl = clashTemplates && clashTemplates.find((c) => c.id === cardId);
+      if (tmpl) addSampleInMemory(tmpl, item.image);
+      saveNewSample(getClashIconsDir(), cardId, item.image).catch(() => {});
+    }
+  }
+  notifyClashPendingReview();
+});
+ipcMain.handle("clash:clearPendingReview", () => {
+  clashPendingReview = [];
+  notifyClashPendingReview();
+});
+ipcMain.handle("clash:openReviewWindow", () => {
+  createClashReviewWindow();
 });
 // Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою
 // папку, дальше nut-js screen.find() ищет её на экране целиком.

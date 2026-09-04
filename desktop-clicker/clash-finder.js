@@ -306,15 +306,18 @@ async function scanForCard(nutScreen, region, templates, confidenceThreshold, pr
   const signature = computeGridSignature(haystack, cellSize);
 
   if (!prevSignature || prevSignature.cols !== signature.cols || prevSignature.rows !== signature.rows) {
-    return { matches: [], signature, lastCrop: null };
+    return { matches: [], signature, lastCrop: null, unmatched: [] };
   }
 
   const yieldCounter = { n: 0 };
   const changedCells = findChangedCells(prevSignature, signature);
-  if (changedCells.length === 0) return { matches: [], signature, lastCrop: null };
+  if (changedCells.length === 0) return { matches: [], signature, lastCrop: null, unmatched: [] };
 
   const boxes = groupIntoRegions(changedCells, signature.cols, signature.rows, 1);
   const matches = [];
+  const unmatched = []; // области интереса, где ничего не прошло порог — кандидаты для
+  // пост-матчевого разбора (живьём в реальном времени распознать эту область не вышло, но
+  // человек может подписать её позже не спеша — см. main.js clashPendingReview)
   let lastCrop = null;
   for (const box of boxes) {
     const px = cellBoxToPixels(box, cellSize, haystack.width, haystack.height);
@@ -322,15 +325,14 @@ async function scanForCard(nutScreen, region, templates, confidenceThreshold, pr
     lastCrop = crop; // для ручной поправки — последняя обработанная область интереса на этот тик,
     // даже если её не удалось распознать; см. main.js clash:recordManualPlay
     const best = await matchAgainstTemplates(crop, templates, confidenceThreshold, yieldCounter);
+    const absRegion = { x: region.x + px.x, y: region.y + px.y, width: px.width, height: px.height };
     if (best) {
-      matches.push({
-        ...best,
-        region: { x: region.x + px.x, y: region.y + px.y, width: px.width, height: px.height },
-        cropImage: crop, // для самообучения — см. main.js clashPollTick
-      });
+      matches.push({ ...best, region: absRegion, cropImage: crop });
+    } else {
+      unmatched.push({ region: absRegion, cropImage: crop });
     }
   }
-  return { matches, signature, lastCrop };
+  return { matches, signature, lastCrop, unmatched };
 }
 
 module.exports = { ensureCardIcons, loadCardTemplates, scanForCard, saveNewSample, addSampleInMemory, MAX_SAMPLES_PER_CARD };

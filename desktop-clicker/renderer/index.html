@@ -707,6 +707,16 @@
             <p class="hint" id="clashRegionHint">Область не выбрана.</p>
           </div>
           <div class="field">
+            <div class="row">
+              <button id="clashPickMatchActiveBtn" class="secondary-btn">Область индикатора боя</button>
+            </div>
+            <p class="hint" id="clashMatchActiveHint">Не настроено — счётчик стартует по первой распознанной карте (менее надёжно).</p>
+            <p class="hint">Выдели маленькую область с иконкой эликсира (капля с числом внизу
+              экрана) — она видна ТОЛЬКО во время боя, всегда на одном месте. Выделять нужно
+              именно во время матча, когда иконка видна. Это надёжнее ожидания первой карты и
+              экономит ресурсы — вне боя поле вообще не сканируется.</p>
+          </div>
+          <div class="field">
             <label for="clashConfidence" title="Насколько точно должен совпасть юнит на поле с образцом">Точность совпадения</label>
             <div class="slider-row">
               <input type="range" id="clashConfidenceSlider" min="50" max="100" step="1" />
@@ -760,11 +770,24 @@
         </section>
 
         <section>
+          <h2>🔍 Разбор матча <span id="clashReviewCount" class="pro-badge tiny" style="background:#3a7bd5"></span></h2>
+          <p class="hint">Вживую, во время быстрого матча, подписывать каждую карту некогда — то,
+            что распознавание не смогло уверенно опознать, попадает в очередь. Открой отдельное
+            окно и не спеша разбери: что здесь было? Клик по картинке увеличивает её. Выбор карты
+            сохраняет кроп как обучающий образец — так база наполняется реальными данными, и живое
+            распознавание постепенно начинает работать само.</p>
+          <div class="field">
+            <button id="clashOpenReviewBtn" class="secondary-btn">Открыть разбор матча</button>
+          </div>
+        </section>
+
+        <section>
           <h2>📊 Текущее состояние</h2>
           <div class="field">
             <div class="slider-row">
               <span id="clashElixirValue" style="font-weight:700; font-size: 18px;">0.0</span>
               <span class="hint" id="clashPhaseLabel">x1</span>
+              <span class="hint" id="clashMatchActiveLabel"></span>
             </div>
           </div>
           <div class="field">

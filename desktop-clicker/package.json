@@ -1,6 +1,6 @@
 {
   "name": "autoclicker-desktop",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "private": true,
   "description": "МультиТул — автоматизация под Windows: автокликер, макросы, бинды, триггер по цвету. Работает в любом окне/игре.",
   "main": "main.js",
@@ -37,6 +37,7 @@
       "pick-preload.js",
       "sticky-note-preload.js",
       "clash-hud-preload.js",
+      "clash-review-preload.js",
       "clash-cards.js",
       "clash-tracker.js",
       "clash-finder.js",

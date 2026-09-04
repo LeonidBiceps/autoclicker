@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld("api", {
   pickImageTriggerTemplate: () => ipcRenderer.invoke("imageTrigger:pickTemplate"),
 
   pickClashRegion: () => ipcRenderer.invoke("clash:pickRegion"),
+  pickClashMatchActiveTemplate: () => ipcRenderer.invoke("clash:pickMatchActiveTemplate"),
   getClashCards: () => ipcRenderer.invoke("clash:getCards"),
   getClashState: () => ipcRenderer.invoke("clash:getState"),
   startClashMatch: () => ipcRenderer.invoke("clash:startMatch"),
@@ -45,7 +46,12 @@ contextBridge.exposeInMainWorld("api", {
   resetClash: () => ipcRenderer.invoke("clash:reset"),
   recordClashManualPlay: (cardId) => ipcRenderer.invoke("clash:recordManualPlay", cardId),
   undoClashLastPlay: () => ipcRenderer.invoke("clash:undoLastPlay"),
+  getClashPendingReview: () => ipcRenderer.invoke("clash:getPendingReview"),
+  resolveClashPendingReview: (reviewId, cardId) => ipcRenderer.invoke("clash:resolvePendingReview", reviewId, cardId),
+  clearClashPendingReview: () => ipcRenderer.invoke("clash:clearPendingReview"),
+  openClashReviewWindow: () => ipcRenderer.invoke("clash:openReviewWindow"),
   onClashState: (callback) => ipcRenderer.on("clash:state", (_e, state) => callback(state)),
+  onClashPendingReviewCount: (callback) => ipcRenderer.on("clash:pendingReviewCount", (_e, count) => callback(count)),
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
