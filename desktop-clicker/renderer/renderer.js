@@ -393,9 +393,13 @@ function renderClashSettings() {
   document.getElementById("clashMatchDuration").value = cfg.matchDurationSec || 120;
   document.getElementById("clashOvertimeMultiplier").value = cfg.overtimeMultiplier || 3;
   const hint = document.getElementById("clashRegionHint");
-  hint.textContent = cfg.region
-    ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
-    : "Область не выбрана.";
+  if (cfg.windowTitle && cfg.regionOffset) {
+    hint.textContent = `Привязано к окну «${cfg.windowTitle}» — ${cfg.regionOffset.width}×${cfg.regionOffset.height}. Можно свободно двигать окно эмулятора, регион пересчитывается сам.`;
+  } else if (cfg.region) {
+    hint.textContent = `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y} (окно эмулятора не распознано — координаты фиксированные, при переносе окна нужно будет выбрать заново).`;
+  } else {
+    hint.textContent = "Область не выбрана.";
+  }
   const activeHint = document.getElementById("clashMatchActiveHint");
   activeHint.textContent = cfg.matchActiveTemplateFile
     ? "Настроено — матч определяется по иконке эликсира."
@@ -884,7 +888,14 @@ function bindHandlers() {
     if (!proUnlocked) return;
     const result = await window.api.pickClashRegion();
     if (result.ok) {
-      await save({ clashTracker: { ...settings.clashTracker, region: result.region } });
+      await save({
+        clashTracker: {
+          ...settings.clashTracker,
+          region: result.region,
+          windowTitle: result.windowTitle,
+          regionOffset: result.regionOffset,
+        },
+      });
       renderClashSettings();
     }
   });

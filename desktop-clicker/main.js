@@ -25,7 +25,7 @@ const { pathToFileURL } = require("url");
 const { execFile } = require("child_process");
 const { Store, PROFILE_FIELDS } = require("./store");
 const { verifyLicenseKey, getMachineId } = require("./license");
-const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow, imageResource, providerRegistry } = require("@nut-tree-fork/nut-js");
+const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow, getWindows, imageResource, providerRegistry } = require("@nut-tree-fork/nut-js");
 const { JimpImageFinder } = require("./image-finder");
 const { uIOhook } = require("uiohook-napi");
 const { keycodeToName, resolveNutjsKey } = require("./keymap");
@@ -1098,6 +1098,70 @@ async function runOcr(region, lang) {
 // иконки (свои же скриншоты из клиента игры), файл с тем же id в clash-card-icons просто
 // заменяется, код трогать не нужно.
 
+// Окно эмулятора двигается/пересоздаётся (пользователь переключает окна, перезапускает
+// BlueStacks) — если регион поля хранить абсолютными координатами экрана, любое такое
+// перемещение молча ломает распознавание, пока не перенастроишь регион заново вручную. Вместо
+// этого регион хранится как смещение ОТ окна эмулятора (windowTitle + offset), а актуальные
+// координаты на экране пересчитываются каждый раз по текущему положению этого окна.
+async function findWindowByTitle(titleSubstr) {
+  if (!titleSubstr) return null;
+  const needle = titleSubstr.toLowerCase();
+  const windows = await getWindows();
+  for (const w of windows) {
+    try {
+      const title = await w.title;
+      if (!title || !title.toLowerCase().includes(needle)) continue;
+      const region = await w.region;
+      if (region.width < 50 || region.height < 50) continue; // системные окна-пустышки с тем же именем — пропускаем
+      return region; // { left, top, width, height }
+    } catch (e) {
+      // это конкретное окно не отдаёт title/region — пробуем следующее
+    }
+  }
+  return null;
+}
+
+// Автоопределение: какое окно на экране пользователь имел в виду, когда выделял регион мышью —
+// самое маленькое из окон, чьи границы содержат центр выделенной области (самое маленькое, чтобы
+// не попасть на родительский desktop/контейнер вместо самого окна эмулятора).
+async function findWindowContainingRegion(region) {
+  const cx = region.x + region.width / 2, cy = region.y + region.height / 2;
+  const windows = await getWindows();
+  let best = null;
+  for (const w of windows) {
+    try {
+      const title = await w.title;
+      if (!title || !title.trim()) continue;
+      const wr = await w.region;
+      if (wr.width < 100 || wr.height < 100) continue;
+      const inside = cx >= wr.left && cx <= wr.left + wr.width && cy >= wr.top && cy <= wr.top + wr.height;
+      if (inside && (!best || wr.width * wr.height < best.region.width * best.region.height)) {
+        best = { title, region: wr };
+      }
+    } catch (e) {
+      // пропускаем окна, которые не отдают title/region
+    }
+  }
+  return best;
+}
+
+// Переводит regionOffset (сохранённое смещение от угла окна) в абсолютные координаты экрана по
+// ТЕКУЩЕМУ положению окна — или в старые абсолютные координаты, если привязка к окну не
+// настроена (обратная совместимость с уже сохранёнными настройками).
+async function resolveClashRegion(settings) {
+  if (settings.windowTitle && settings.regionOffset) {
+    const win = await findWindowByTitle(settings.windowTitle);
+    if (!win) return null; // окно закрыто/не запущено сейчас — сканировать нечего
+    return {
+      x: win.left + settings.regionOffset.x,
+      y: win.top + settings.regionOffset.y,
+      width: settings.regionOffset.width,
+      height: settings.regionOffset.height,
+    };
+  }
+  return settings.region || null;
+}
+
 function getClashIconsDir() {
   const dir = path.join(app.getPath("userData"), "clash-card-icons");
   fs.mkdirSync(dir, { recursive: true });
@@ -1171,7 +1235,7 @@ function ensureClashTemplatesLoaded() {
 
 async function clashPollTick() {
   const settings = store.get("clashTracker");
-  if (!settings.enabled || !settings.region || !clashTemplates) return;
+  if (!settings.enabled || !(settings.region || (settings.windowTitle && settings.regionOffset)) || !clashTemplates) return;
   // Если настроен индикатор боя и сейчас матч не идёт — незачем сканировать поле вообще (там
   // меню/магазин/что угодно, не имеющее отношения к игре) — экономим CPU и не плодим мусорные
   // записи в очереди на разбор.
@@ -1183,9 +1247,11 @@ async function clashPollTick() {
   if (clashScanInProgress) return;
   clashScanInProgress = true;
   try {
+    const region = await resolveClashRegion(settings);
+    if (!region) return; // окно эмулятора не найдено (закрыто/переименовано) — сканировать нечего
     const { matches, signature, lastCrop, unmatched } = await scanForCard(
       nutScreen,
-      settings.region,
+      region,
       clashTemplates,
       settings.confidence,
       clashLastSignature,
@@ -2135,7 +2201,19 @@ ipcMain.handle("clash:pickRegion", async () => {
   if (!proUnlocked) return { ok: false, error: "pro-required" };
   const region = await pickRegion();
   if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
-  return { ok: true, region };
+  // Автоопределение: под какое окно попало выделение — запоминаем регион СМЕЩЕНИЕМ от угла этого
+  // окна, а не абсолютными координатами экрана, чтобы переезд/пересоздание окна эмулятора не
+  // ломало настройку молча (см. resolveClashRegion выше).
+  const win = await findWindowContainingRegion(region);
+  if (win) {
+    return {
+      ok: true,
+      region,
+      windowTitle: win.title,
+      regionOffset: { x: region.x - win.region.left, y: region.y - win.region.top, width: region.width, height: region.height },
+    };
+  }
+  return { ok: true, region, windowTitle: null, regionOffset: null };
 });
 // Снимок маленькой области с иконкой эликсира — делать ТОЛЬКО во время реального боя (сама
 // иконка видна лишь тогда). По ней дальше определяем "матч идёт/не идёт" — тот же принцип, что у
