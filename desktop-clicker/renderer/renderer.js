@@ -185,6 +185,8 @@ function updateProUI() {
   document.getElementById("telegramBadge").hidden = proUnlocked;
   document.getElementById("imageTriggerBadge").hidden = proUnlocked;
   document.getElementById("turboModeBadge").hidden = proUnlocked;
+  document.getElementById("clashBadge").hidden = proUnlocked;
+  document.getElementById("clashTabBadge").hidden = proUnlocked;
   document.getElementById("sequenceClickAllBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
@@ -232,6 +234,15 @@ function updateProUI() {
     "imageTriggerConfidence",
     "turboModeEnabled",
     "sequenceClickAllEnabled",
+    "clashEnabled",
+    "clashPickRegionBtn",
+    "clashConfidenceSlider",
+    "clashConfidence",
+    "clashMatchDuration",
+    "clashOvertimeMultiplier",
+    "clashStartMatchBtn",
+    "clashOvertimeBtn",
+    "clashResetBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -306,6 +317,7 @@ function loadIntoForm() {
 
   renderTextTrigger();
   renderImageTrigger();
+  renderClashSettings();
 
   document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
   document.getElementById("antiAfkIntervalSec").value = settings.antiAfkIntervalSec || 45;
@@ -365,6 +377,41 @@ function renderImageTrigger() {
   document.getElementById("imageTriggerConfidence").value = confidence;
   const hint = document.getElementById("imageTriggerHint");
   hint.textContent = trigger.templateFile ? `Образец: ${trigger.width}×${trigger.height}` : "Образец не выбран.";
+}
+
+function renderClashSettings() {
+  const cfg = settings.clashTracker || {};
+  document.getElementById("clashEnabled").checked = !!cfg.enabled;
+  const confidence = Math.round((cfg.confidence || 0.85) * 100);
+  document.getElementById("clashConfidenceSlider").value = confidence;
+  document.getElementById("clashConfidence").value = confidence;
+  document.getElementById("clashMatchDuration").value = cfg.matchDurationSec || 120;
+  document.getElementById("clashOvertimeMultiplier").value = cfg.overtimeMultiplier || 3;
+  const hint = document.getElementById("clashRegionHint");
+  hint.textContent = cfg.region
+    ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
+    : "Область не выбрана.";
+}
+
+function renderClashDeck(state, clashCardsById) {
+  document.getElementById("clashElixirValue").textContent = state.elixir.toFixed(1);
+  const phaseLabel = document.getElementById("clashPhaseLabel");
+  phaseLabel.textContent = state.overtime ? "x3 (овертайм)" : state.phaseMultiplier >= 2 ? "x2" : "x1";
+  const grid = document.getElementById("clashDeckGrid");
+  const slots = [];
+  for (let i = 0; i < 8; i++) {
+    const id = state.revealedOrder[i];
+    if (!id) {
+      slots.push(`<div class="clash-slot unknown">?</div>`);
+      continue;
+    }
+    const card = clashCardsById[id];
+    const cls = state.inHand.includes(id) ? "in-hand" : state.inQueue.includes(id) ? "in-queue" : "";
+    slots.push(
+      `<div class="clash-slot ${cls}"><img src="${card ? card.iconUrl : ""}" onerror="this.style.display='none'"/><span class="clash-slot-name">${escapeHtml(card ? card.name : id)}</span></div>`
+    );
+  }
+  grid.innerHTML = slots.join("");
 }
 
 function updateScheduleFieldsVisibility() {
@@ -786,6 +833,40 @@ function bindHandlers() {
   };
   document.getElementById("imageTriggerConfidenceSlider").addEventListener("change", (e) => saveImageConfidence(e.target.value));
   document.getElementById("imageTriggerConfidence").addEventListener("change", (e) => saveImageConfidence(e.target.value));
+
+  // Clash Royale — счётчик эликсира и колода противника
+  document.getElementById("clashEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ clashTracker: { ...settings.clashTracker, enabled: e.target.checked } });
+  });
+  document.getElementById("clashPickRegionBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickClashRegion();
+    if (result.ok) {
+      await save({ clashTracker: { ...settings.clashTracker, region: result.region } });
+      renderClashSettings();
+    }
+  });
+  document.getElementById("clashConfidenceSlider").addEventListener("input", (e) => {
+    document.getElementById("clashConfidence").value = e.target.value;
+  });
+  const saveClashConfidence = async (v) => {
+    const confidence = Math.max(50, Math.min(100, parseInt(v, 10) || 85)) / 100;
+    document.getElementById("clashConfidenceSlider").value = Math.round(confidence * 100);
+    document.getElementById("clashConfidence").value = Math.round(confidence * 100);
+    await save({ clashTracker: { ...settings.clashTracker, confidence } });
+  };
+  document.getElementById("clashConfidenceSlider").addEventListener("change", (e) => saveClashConfidence(e.target.value));
+  document.getElementById("clashConfidence").addEventListener("change", (e) => saveClashConfidence(e.target.value));
+  document.getElementById("clashMatchDuration").addEventListener("change", async (e) => {
+    await save({ clashTracker: { ...settings.clashTracker, matchDurationSec: Math.max(10, parseInt(e.target.value, 10) || 120) } });
+  });
+  document.getElementById("clashOvertimeMultiplier").addEventListener("change", async (e) => {
+    await save({ clashTracker: { ...settings.clashTracker, overtimeMultiplier: Math.max(1, parseInt(e.target.value, 10) || 3) } });
+  });
+  document.getElementById("clashStartMatchBtn").addEventListener("click", () => window.api.startClashMatch());
+  document.getElementById("clashOvertimeBtn").addEventListener("click", () => window.api.startClashOvertime());
+  document.getElementById("clashResetBtn").addEventListener("click", () => window.api.resetClash());
 
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
@@ -1398,6 +1479,12 @@ async function init() {
   renderClipboardList(await window.api.getClipboardHistory());
   renderNotesList(await window.api.listNotes());
   showUpdateNotice(await window.api.getUpdateInfo());
+
+  const clashCards = await window.api.getClashCards();
+  const clashCardsById = {};
+  clashCards.forEach((c) => (clashCardsById[c.id] = c));
+  renderClashDeck(await window.api.getClashState(), clashCardsById);
+  window.api.onClashState((state) => renderClashDeck(state, clashCardsById));
 }
 
 init();

@@ -37,6 +37,14 @@ contextBridge.exposeInMainWorld("api", {
   pickTextTriggerRegion: () => ipcRenderer.invoke("textTrigger:pickRegion"),
   pickImageTriggerTemplate: () => ipcRenderer.invoke("imageTrigger:pickTemplate"),
 
+  pickClashRegion: () => ipcRenderer.invoke("clash:pickRegion"),
+  getClashCards: () => ipcRenderer.invoke("clash:getCards"),
+  getClashState: () => ipcRenderer.invoke("clash:getState"),
+  startClashMatch: () => ipcRenderer.invoke("clash:startMatch"),
+  startClashOvertime: () => ipcRenderer.invoke("clash:startOvertime"),
+  resetClash: () => ipcRenderer.invoke("clash:reset"),
+  onClashState: (callback) => ipcRenderer.on("clash:state", (_e, state) => callback(state)),
+
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),
   saveVideoRecording: (buffer) => ipcRenderer.invoke("record:saveVideo", buffer),
