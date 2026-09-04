@@ -1,4 +1,4 @@
-const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v2.15.0/MultiTool-2.15.0.exe";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v2.16.0/MultiTool-2.16.0.exe";
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const REPO = "LeonidBiceps/autoclicker";
 

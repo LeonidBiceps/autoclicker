@@ -34,6 +34,19 @@ const Tesseract = require("tesseract.js");
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
 
+// В турбо-режиме кликер вызывает click()/pressKey()/releaseKey() чаще, чем что-либо ещё в этом
+// файле, поэтому именно здесь имеет смысл срезать последний лишний слой: у mouse.click()/
+// mouse.doubleClick()/keyboard.pressKey()/keyboard.releaseKey() (обёртки nut-js) ПЕРЕД самим
+// нативным вызовом всегда стоит `await sleep(this.config.autoDelayMs)` — и даже когда autoDelayMs
+// уже обнулён (см. выше), это всё равно один реальный `setTimeout(fn, 0)`, то есть лишний проход
+// через таймер-хип event loop'а на каждый клик. Внутри же сам providerRegistry.getMouse()/
+// getKeyboard() — это уже голый нативный биндинг (`libnut.mouseClick(...)` и т.п.) без единой
+// задержки. Идём напрямую к нему в горячем пути (clickButton/performClick), а не через обёртку —
+// не переписывая сам nut-js и не добавляя свой нативный модуль, а просто убирая один
+// лишний JS-слой, который сам nut-js уже не заставляет использовать.
+const nativeMouse = providerRegistry.getMouse();
+const nativeKeyboard = providerRegistry.getKeyboard();
+
 const FREE_SESSION_CLICK_CAP = 5000;
 
 let store;
@@ -101,11 +114,11 @@ function applyJitter(point, settings) {
 
 async function clickButton(settings) {
   if (settings.button === "right") {
-    await mouse.click(Button.RIGHT);
+    await nativeMouse.click(Button.RIGHT);
   } else if (settings.button === "double") {
-    await mouse.doubleClick(Button.LEFT);
+    await nativeMouse.doubleClick(Button.LEFT);
   } else {
-    await mouse.click(Button.LEFT);
+    await nativeMouse.click(Button.LEFT);
   }
 }
 
@@ -114,8 +127,8 @@ async function performClick() {
 
   if (settings.actionType === "keyboard") {
     const key = resolveNutjsKey(settings.keyToPress);
-    await keyboard.pressKey(key);
-    await keyboard.releaseKey(key);
+    await nativeKeyboard.pressKey(key);
+    await nativeKeyboard.releaseKey(key);
     return;
   }
 
