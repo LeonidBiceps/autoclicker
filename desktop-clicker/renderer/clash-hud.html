@@ -56,6 +56,13 @@
     }
     .phase-badge.x2 { background: #b45309; }
     .phase-badge.x3 { background: #b91c1c; }
+    .review-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #3a7bd5;
+    }
     .deck-grid {
       flex: 1;
       display: grid;
@@ -108,6 +115,7 @@
       <div class="elixir-bar"><div class="elixir-fill" id="elixirFill"></div></div>
       <div class="elixir-num" id="elixirNum">0.0</div>
       <div class="phase-badge" id="phaseBadge">x1</div>
+      <div class="review-badge" id="reviewBadge" hidden></div>
     </div>
     <div class="deck-grid" id="deckGrid"></div>
   </div>
@@ -129,6 +137,13 @@
       } else {
         badge.textContent = "x1";
         badge.className = "phase-badge";
+      }
+      const reviewBadge = document.getElementById("reviewBadge");
+      if (state.pendingReviewCount) {
+        reviewBadge.textContent = "🔍 " + state.pendingReviewCount;
+        reviewBadge.hidden = false;
+      } else {
+        reviewBadge.hidden = true;
       }
 
       const slots = [];

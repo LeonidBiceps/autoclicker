@@ -1106,7 +1106,11 @@ function getClashIconsDir() {
 
 function getClashStateWithMatchActive() {
   const hasMatchActiveTemplate = !!store.get("clashTracker").matchActiveTemplateFile;
-  return { ...clashTracker.getState(), matchActive: hasMatchActiveTemplate ? clashMatchActive : null };
+  return {
+    ...clashTracker.getState(),
+    matchActive: hasMatchActiveTemplate ? clashMatchActive : null,
+    pendingReviewCount: clashPendingReview.length, // чтобы видеть, что накопилось на разбор, не переключаясь на главное окно
+  };
 }
 
 function notifyClashState() {
@@ -1124,7 +1128,7 @@ async function checkClashMatchActive() {
   if (!settings.matchActiveTemplateFile) return; // не настроено — просто ничего не делаем, не мешаем старому поведению
   let active = false;
   try {
-    await nutScreen.find(imageResource(settings.matchActiveTemplateFile), { confidence: settings.matchActiveConfidence || 0.85 });
+    await nutScreen.find(imageResource(settings.matchActiveTemplateFile), { confidence: settings.matchActiveConfidence || 0.8 });
     active = true;
   } catch (e) {
     active = false;
@@ -1134,10 +1138,19 @@ async function checkClashMatchActive() {
   if (active) {
     if (!clashTracker.isRunning()) {
       clashTracker.start();
+      // Новый матч — состояние из прошлого (какие карты недавно засчитаны, какие "спавнеры"
+      // ещё считаются активными) относится к УЖЕ ЗАКОНЧИВШЕМУСЯ бою и никак не должно влиять на
+      // этот. Без сброса, например, Хижина гоблинов, разыгранная в конце прошлого матча, могла бы
+      // ещё 45 секунд подавлять настоящий розыгрыш той же карты в начале нового.
+      clashLastDetectedAt = {};
+      clashActiveSpawners = [];
       logActivity("🃏 Clash Royale: матч начался (по индикатору боя)");
     }
   } else {
     logActivity("🃏 Clash Royale: матч завершён (индикатор боя пропал)");
+    // Матч только что закончился — самое удобное время для разбора (уже не отвлекает от игры).
+    // Открываем/фокусируем окно только если реально есть что разбирать — не навязываемся зря.
+    if (clashPendingReview.length > 0) createClashReviewWindow();
   }
   notifyClashState();
 }
@@ -2161,6 +2174,7 @@ ipcMain.handle("clash:getState", () => getClashStateWithMatchActive());
 ipcMain.handle("clash:startMatch", () => {
   clashTracker.start();
   clashLastDetectedAt = {};
+  clashActiveSpawners = [];
   notifyClashState();
   logActivity("🃏 Clash Royale: начало матча, счётчик сброшен");
 });
@@ -2172,6 +2186,7 @@ ipcMain.handle("clash:startOvertime", () => {
 ipcMain.handle("clash:reset", () => {
   clashTracker.reset();
   clashLastDetectedAt = {};
+  clashActiveSpawners = [];
   notifyClashState();
 });
 // Ручная поправка — подстраховка на случай, если авто-распознавание юнита на поле ошиблось или
