@@ -77,6 +77,8 @@ let clashTemplatesLoadingPromise = null;
 let clashPollTimer = null;
 let clashTickTimer = null;
 let clashLastDetectedAt = {}; // cardId -> ts последнего засчитанного розыгрыша (защита от "залипания" одной и той же карты на экране)
+let clashLastSignature = null; // "подпись" предыдущего кадра региона — см. computeSignature в clash-finder.js
+let clashScanInProgress = false; // защита от наложения тиков: если сравнение затянулось дольше pollIntervalMs, новый тик не запускается поверх
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1052,23 +1054,46 @@ function ensureClashTemplatesLoaded() {
 async function clashPollTick() {
   const settings = store.get("clashTracker");
   if (!settings.enabled || !settings.region || !clashTemplates) return;
+  // Сравнение с целой базой карт (matchOnce на ~100 шаблонов) — тяжёлая синхронная работа на
+  // главном процессе, том же, что считает тайминг самих кликов. Если предыдущий тик почему-то
+  // ещё не закончился (медленная машина, большая область) — не запускаем второй поверх: две
+  // параллельные тяжёлые сверки только удлиняют подвисание, а не ускоряют распознавание.
+  if (clashScanInProgress) return;
+  clashScanInProgress = true;
   try {
-    const match = await scanForCard(nutScreen, settings.region, clashTemplates, settings.confidence);
+    const { match, signature } = await scanForCard(
+      nutScreen,
+      settings.region,
+      clashTemplates,
+      settings.confidence,
+      clashLastSignature
+    );
+    clashLastSignature = signature;
     if (!match) return;
     const lastAt = clashLastDetectedAt[match.id] || 0;
     if (Date.now() - lastAt < settings.cooldownMs) return; // та же карта ещё "видна" с прошлого тика — не считаем повторно
     clashLastDetectedAt[match.id] = Date.now();
+    if (!clashTracker.isRunning()) {
+      // Первая распознанная карта — самый надёжный сигнал, что матч уже идёт: не нужно
+      // вручную жать "Начать матч" в момент старта, счётчик подхватывает сам.
+      clashTracker.start();
+      logActivity("🃏 Clash Royale: матч определён по первой сыгранной карте, счётчик запущен");
+    }
     clashTracker.recordCardPlay(match.id, match.elixir);
     if (store.get("telegramOnTrigger")) notifyTelegram(`🃏 Противник разыграл: ${match.name}`);
     notifyClashState();
   } catch (e) {
     // сбой одного тика сравнения не должен останавливать весь опрос
+  } finally {
+    clashScanInProgress = false;
   }
 }
 
 function startClashPolling(settings) {
   stopClashPolling();
   ensureClashTemplatesLoaded();
+  clashLastSignature = null;
+  clashScanInProgress = false;
   clashPollTimer = setInterval(clashPollTick, Math.max(200, settings.pollIntervalMs));
   clashTickTimer = setInterval(() => {
     clashTracker.tick();

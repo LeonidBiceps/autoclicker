@@ -107,18 +107,75 @@ async function loadCardTemplates(iconsDir) {
   return templates;
 }
 
-// Один тик распознавания: снимает regionToImage один раз и сравнивает со ВСЕМИ шаблонами —
-// возвращает лучшее совпадение выше порога, либо null.
-async function scanForCard(nutScreen, region, templates, confidenceThreshold) {
+// Дешёвая "подпись" кадра — среднее R/G/B по сетке 8x8 клеток. Сравнение со ВСЕЙ базой карт
+// (matchOnce на каждый из ~100 шаблонов) — тяжёлая синхронная математика на главном процессе
+// Electron (там же крутится тайминг самих кликов), и гонять её на каждый тик опроса, даже когда
+// на экране ничего не изменилось с прошлого раза, — это и есть основная причина подтормаживаний
+// при включённом отслеживании. Кадр без изменений (подавляющее большинство тиков — карта
+// разыгрывается редко) обходится в O(ширина×высота) на сложение, а не в тяжёлую корреляцию по
+// всем шаблонам — и просто пропускается.
+const SIGNATURE_GRID = 8;
+function computeSignature(image) {
+  const { width, height, data } = image;
+  const cells = SIGNATURE_GRID;
+  const sums = new Float64Array(cells * cells * 3);
+  const counts = new Int32Array(cells * cells);
+  const cw = Math.max(1, Math.ceil(width / cells));
+  const ch = Math.max(1, Math.ceil(height / cells));
+  for (let y = 0; y < height; y++) {
+    const cy = Math.min(cells - 1, Math.floor(y / ch));
+    for (let x = 0; x < width; x++) {
+      const cx = Math.min(cells - 1, Math.floor(x / cw));
+      const cellIdx = cy * cells + cx;
+      const p = (y * width + x) * 4;
+      sums[cellIdx * 3] += data[p];
+      sums[cellIdx * 3 + 1] += data[p + 1];
+      sums[cellIdx * 3 + 2] += data[p + 2];
+      counts[cellIdx]++;
+    }
+  }
+  for (let i = 0; i < cells * cells; i++) {
+    const c = counts[i] || 1;
+    sums[i * 3] /= c;
+    sums[i * 3 + 1] /= c;
+    sums[i * 3 + 2] /= c;
+  }
+  return sums;
+}
+
+// Порог в единицах среднего значения канала (0-255) на клетку сетки — подобран с запасом
+// ниже обычного шума перекодирования кадра, чтобы не пропустить реально появившуюся иконку.
+const SIGNATURE_CHANGE_THRESHOLD = 3;
+function signatureChanged(a, b) {
+  if (!a || !b || a.length !== b.length) return true;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+  return diff / a.length > SIGNATURE_CHANGE_THRESHOLD;
+}
+
+// Один тик распознавания: снимает регион один раз. Если картинка не изменилась с прошлого тика
+// (prevSignature) — не сравнивает со всеми шаблонами вообще (см. computeSignature выше). Если
+// изменилась — сравнивает со ВСЕМИ шаблонами, отдавая событийному циклу передышку каждые
+// YIELD_EVERY карт (иначе один скан — это одна сплошная синхронная пауза на ~полсекунды,
+// в течение которой подвиснет и сама автоматизация кликов).
+const YIELD_EVERY = 12;
+async function scanForCard(nutScreen, region, templates, confidenceThreshold, prevSignature) {
   const haystack = await nutScreen.grabRegion(new Region(region.x, region.y, region.width, region.height));
+  const signature = computeSignature(haystack);
+  if (prevSignature && !signatureChanged(prevSignature, signature)) {
+    return { match: null, signature };
+  }
   let best = null;
+  let i = 0;
   for (const card of templates) {
     const { confidence } = await matchOnce(haystack, card.needleImage);
     if (confidence >= confidenceThreshold && (!best || confidence > best.confidence)) {
       best = { id: card.id, name: card.name, elixir: card.elixir, confidence };
     }
+    i++;
+    if (i % YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve));
   }
-  return best;
+  return { match: best, signature };
 }
 
 module.exports = { ensureCardIcons, loadCardTemplates, scanForCard };
