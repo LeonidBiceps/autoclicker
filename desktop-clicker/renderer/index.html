@@ -32,7 +32,8 @@
         <button class="nav-item active" data-target="home" data-keywords="pro лицензия ключ донат поддержать версия обновление"><span class="nav-icon">🏠</span> Главная</button>
 
         <div class="nav-group-label" data-group="click-group">Клик</div>
-        <button class="nav-item" data-target="click" data-group="click-group" data-keywords="точка курсор режим цепочка последовательность интервал скорость турбо разброс jitter триггер цвет пиксель окно привязка текст ocr дождаться картинка образец кнопка действие клавиша"><span class="nav-icon">🖱</span> Клик</button>
+        <button class="nav-item" data-target="click" data-group="click-group" data-keywords="точка курсор режим цепочка последовательность интервал скорость турбо разброс jitter кнопка действие клавиша"><span class="nav-icon">🖱</span> Клик</button>
+        <button class="nav-item" data-target="triggers" data-group="click-group" data-keywords="триггер цвет пиксель окно привязка текст ocr дождаться картинка образец условие точность допуск"><span class="nav-icon">🎯</span> Триггеры</button>
         <button class="nav-item" data-target="hotkeys" data-group="click-group" data-keywords="хоткей горячие клавиши глобальный автостоп лимит расписание отложенный старт таймер"><span class="nav-icon">⌨</span> Хоткеи</button>
         <button class="nav-item" data-target="profiles" data-group="click-group" data-keywords="профиль пресет игра экспорт импорт сохранить настройки"><span class="nav-icon">📁</span> Профили <span class="pro-badge tiny" id="profilesTabBadge">Pro</span></button>
 
@@ -204,6 +205,14 @@
             </span>
           </label>
         </section>
+
+      </div>
+
+      <div class="tab-panel" data-panel="triggers" hidden>
+        <h1>🎯 Триггеры</h1>
+        <p class="hint">Условия, при которых кликер вообще срабатывает — вместо (или вместе с)
+          обычного клика по таймеру. Настраиваются здесь, привязываются автоматически к кликеру на
+          вкладке «Клик».</p>
 
         <section id="colorTriggerSection">
           <h2>🎨 Триггер по цвету <span class="pro-badge" id="colorTriggerBadge">Pro</span>
