@@ -46,7 +46,6 @@
         <button class="nav-item" data-target="record" data-group="tools-group" data-keywords="запись экрана видео таймлапс монитор индикатор rec"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
         <button class="nav-item" data-target="clipboard" data-group="tools-group" data-keywords="буфер обмена копировать история текст"><span class="nav-icon">📎</span> Буфер обмена</button>
         <button class="nav-item" data-target="notes" data-group="tools-group" data-keywords="заметки sticky notes картинки цвет закрепить шрифт жирный курсив"><span class="nav-icon">🗒</span> Заметки</button>
-        <button class="nav-item" data-target="clash" data-group="tools-group" data-keywords="clash royale клэш рояль эликсир elixir колода карта эмулятор"><span class="nav-icon">🃏</span> Clash Royale <span class="pro-badge tiny" id="clashTabBadge">Pro</span></button>
 
         <div class="nav-group-label" data-group="system-group">Система</div>
         <button class="nav-item" data-target="startup" data-group="system-group" data-keywords="автозагрузка программы windows автозапуск"><span class="nav-icon">🚀</span> Автозагрузка</button>
@@ -677,121 +676,6 @@
           </div>
           <div class="field">
             <div class="macro-list" id="notesList"></div>
-          </div>
-        </section>
-      </div>
-
-      <div class="tab-panel" data-panel="clash" hidden>
-        <h1>🃏 Clash Royale <span class="pro-badge" id="clashBadge">Pro</span></h1>
-        <p class="hint">Экспериментально: счётчик эликсира противника (оценка по времени, игра его
-          не показывает) и открытая колода — по мере того, как противник разыгрывает карты, они
-          распознаются по появлению юнита на поле боя (иконки карты в игре нигде не показывают —
-          только сам юнит, в любом месте поля, включая твою половину) и больше не пропадают из
-          списка до конца матча. Работает через область ВСЕГО игрового поля — её нужно один раз
-          указать самому. Из-за того, что распознавать приходится юнита (ракурсы, анимация,
-          перекрытия), а не статичную иконку, точность заметно ниже, чем могла бы быть — поэтому
-          рядом есть быстрая ручная поправка.</p>
-        <section>
-          <h2>⚙ Настройка</h2>
-          <label class="switch-row">
-            <span>Включить отслеживание</span>
-            <span class="switch">
-              <input type="checkbox" id="clashEnabled" />
-              <span class="switch-slider"></span>
-            </span>
-          </label>
-          <div class="field">
-            <div class="row">
-              <button id="clashPickRegionBtn" class="secondary-btn">Область игрового поля</button>
-            </div>
-            <p class="hint" id="clashRegionHint">Область не выбрана.</p>
-          </div>
-          <div class="field">
-            <div class="row">
-              <button id="clashPickMatchActiveBtn" class="secondary-btn">Область индикатора боя</button>
-            </div>
-            <p class="hint" id="clashMatchActiveHint">Не настроено — счётчик стартует по первой распознанной карте (менее надёжно).</p>
-            <p class="hint">Выдели маленькую область с иконкой эликсира (капля с числом внизу
-              экрана) — она видна ТОЛЬКО во время боя, всегда на одном месте. Выделять нужно
-              именно во время матча, когда иконка видна. Это надёжнее ожидания первой карты и
-              экономит ресурсы — вне боя поле вообще не сканируется.</p>
-          </div>
-          <div class="field">
-            <label for="clashConfidence" title="Насколько точно должен совпасть юнит на поле с образцом">Точность совпадения</label>
-            <div class="slider-row">
-              <input type="range" id="clashConfidenceSlider" min="50" max="100" step="1" />
-              <input type="number" id="clashConfidence" min="50" max="100" step="1" class="slider-number" />
-            </div>
-          </div>
-          <div class="field">
-            <label for="clashMatchDuration" title="Через сколько секунд после старта включается х2 эликсир — стандартно 120с (последняя минута обычного 3-минутного матча)">До х2 эликсира, сек</label>
-            <input type="number" id="clashMatchDuration" min="10" step="10" />
-          </div>
-          <div class="field">
-            <label for="clashOvertimeMultiplier" title="Во сколько раз ускоряется реген эликсира в овертайме (сверхурочное время при ничьей)">Множитель в овертайме</label>
-            <input type="number" id="clashOvertimeMultiplier" min="1" step="1" />
-          </div>
-          <p class="hint">Тайминги — по памяти, могли поменяться в новых патчах игры: поправь тут,
-            если счётчик расходится с игрой. Образцы юнитов — временные заглушки (шумовая мозаика с
-            подписью), пока не заменены настоящими скриншотами юнитов с поля.</p>
-        </section>
-
-        <section>
-          <h2>🎮 Управление матчем</h2>
-          <div class="field">
-            <div class="row">
-              <button id="clashStartMatchBtn" class="secondary-btn">Начать вручную</button>
-              <button id="clashOvertimeBtn" class="secondary-btn">Овертайм</button>
-              <button id="clashResetBtn" class="secondary-btn">Сброс</button>
-            </div>
-            <p class="hint">Счётчик запускается сам, как только распознана первая карта
-              противника — жать «Начать вручную» не обязательно (нужно только если хочешь
-              зафиксировать точный момент старта до первой карты). Овертайм (х3) игра никак не
-              выдаёт программно — его нужно отметить кнопкой самому. «Сброс» — перед следующим
-              матчем, чтобы прошлая раскрытая колода не переносилась в новый.</p>
-          </div>
-        </section>
-
-        <section>
-          <h2>✏ Ручная поправка</h2>
-          <div class="field">
-            <div class="row">
-              <input type="text" id="clashManualCardInput" list="clashCardDatalist" placeholder="Название карты..." style="flex:1" />
-              <button id="clashManualAddBtn" class="secondary-btn">Добавить</button>
-              <button id="clashUndoBtn" class="secondary-btn">↩ Отменить последнюю</button>
-            </div>
-            <datalist id="clashCardDatalist"></datalist>
-            <p class="hint">Если распознавание ошиблось или пропустило карту — поправь руками: впиши
-              название и нажми «Добавить», либо отмени последнюю ошибочную запись.</p>
-          </div>
-          <div class="field">
-            <div id="clashRecentPlays" class="hint"></div>
-          </div>
-        </section>
-
-        <section>
-          <h2>🔍 Разбор матча <span id="clashReviewCount" class="pro-badge tiny" style="background:#3a7bd5"></span></h2>
-          <p class="hint">Вживую, во время быстрого матча, подписывать каждую карту некогда — то,
-            что распознавание не смогло уверенно опознать, попадает в очередь. Открой отдельное
-            окно и не спеша разбери: что здесь было? Клик по картинке увеличивает её. Выбор карты
-            сохраняет кроп как обучающий образец — так база наполняется реальными данными, и живое
-            распознавание постепенно начинает работать само.</p>
-          <div class="field">
-            <button id="clashOpenReviewBtn" class="secondary-btn">Открыть разбор матча</button>
-          </div>
-        </section>
-
-        <section>
-          <h2>📊 Текущее состояние</h2>
-          <div class="field">
-            <div class="slider-row">
-              <span id="clashElixirValue" style="font-weight:700; font-size: 18px;">0.0</span>
-              <span class="hint" id="clashPhaseLabel">x1</span>
-              <span class="hint" id="clashMatchActiveLabel"></span>
-            </div>
-          </div>
-          <div class="field">
-            <div class="clash-deck-grid" id="clashDeckGrid"></div>
           </div>
         </section>
       </div>

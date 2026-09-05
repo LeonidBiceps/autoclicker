@@ -117,9 +117,25 @@ function correlationAt(haystack, needle, ox, oy) {
   // порога на таких образцах). Подмешиваем сравнение среднего цвета пропорционально тому,
   // насколько мало текстуры в патче (среднее на пиксель, чтобы не зависеть от размера needle) —
   // для текстурных образцов (иконки, кнопки) вес около нуля, ничего не меняется.
+  //
+  // ВАЖНО: этот же путь оказался причиной ложных совпадений по "похожему фону" — крупный образец
+  // юнита с поля (широкая рамка motion-detection, где сам юнит — маленькая часть кадра, а
+  // остальное — пол арены) в среднем малотекстурный, и почти любой другой кроп с тем же полом
+  // проходил через это же сравнение средних цветов, а не через настоящее сопоставление силуэта.
+  // Поэтому для КРУПНЫХ needle (заведомо не маленькая иконка, а скорее юнит+фон вокруг) этот
+  // "спасательный" вес намеренно приглушается — крупный шаблон обязан совпасть по структуре, а не
+  // по одному лишь среднему цвету фона.
+  const FLAT_TAPER_START_PX = 3600; // ~60x60 — крупнее типичной маленькой иконки/заглушки
+  const FLAT_TAPER_END_PX = 14400; // ~120x120 — точно не иконка, скорее юнит с куском фона вокруг
+  const sizeFactor =
+    npx <= FLAT_TAPER_START_PX
+      ? 1
+      : npx >= FLAT_TAPER_END_PX
+      ? 0
+      : 1 - (npx - FLAT_TAPER_START_PX) / (FLAT_TAPER_END_PX - FLAT_TAPER_START_PX);
   const avgVar = (totalVarH + totalVarN) / (2 * npx);
   const NEAR_FLAT_SCALE = 0.004;
-  const nearFlatWeight = Math.max(0, 1 - avgVar / NEAR_FLAT_SCALE);
+  const nearFlatWeight = Math.max(0, 1 - avgVar / NEAR_FLAT_SCALE) * sizeFactor;
   if (nearFlatWeight > 0) {
     const dr = meanH[0] - meanN[0], dg = meanH[1] - meanN[1], db = meanH[2] - meanN[2];
     const colorScore = 1 - Math.sqrt(dr * dr + dg * dg + db * db) * 2;

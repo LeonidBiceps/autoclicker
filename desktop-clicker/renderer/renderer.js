@@ -185,8 +185,6 @@ function updateProUI() {
   document.getElementById("telegramBadge").hidden = proUnlocked;
   document.getElementById("imageTriggerBadge").hidden = proUnlocked;
   document.getElementById("turboModeBadge").hidden = proUnlocked;
-  document.getElementById("clashBadge").hidden = proUnlocked;
-  document.getElementById("clashTabBadge").hidden = proUnlocked;
   document.getElementById("sequenceClickAllBadge").hidden = proUnlocked;
 
   const proOnlyIds = [
@@ -234,20 +232,6 @@ function updateProUI() {
     "imageTriggerConfidence",
     "turboModeEnabled",
     "sequenceClickAllEnabled",
-    "clashEnabled",
-    "clashPickRegionBtn",
-    "clashPickMatchActiveBtn",
-    "clashConfidenceSlider",
-    "clashConfidence",
-    "clashMatchDuration",
-    "clashOvertimeMultiplier",
-    "clashStartMatchBtn",
-    "clashOvertimeBtn",
-    "clashResetBtn",
-    "clashManualCardInput",
-    "clashManualAddBtn",
-    "clashUndoBtn",
-    "clashOpenReviewBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -322,7 +306,6 @@ function loadIntoForm() {
 
   renderTextTrigger();
   renderImageTrigger();
-  renderClashSettings();
 
   document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
   document.getElementById("antiAfkIntervalSec").value = settings.antiAfkIntervalSec || 45;
@@ -383,81 +366,6 @@ function renderImageTrigger() {
   const hint = document.getElementById("imageTriggerHint");
   hint.textContent = trigger.templateFile ? `Образец: ${trigger.width}×${trigger.height}` : "Образец не выбран.";
 }
-
-function renderClashSettings() {
-  const cfg = settings.clashTracker || {};
-  document.getElementById("clashEnabled").checked = !!cfg.enabled;
-  const confidence = Math.round((cfg.confidence || 0.85) * 100);
-  document.getElementById("clashConfidenceSlider").value = confidence;
-  document.getElementById("clashConfidence").value = confidence;
-  document.getElementById("clashMatchDuration").value = cfg.matchDurationSec || 120;
-  document.getElementById("clashOvertimeMultiplier").value = cfg.overtimeMultiplier || 3;
-  const hint = document.getElementById("clashRegionHint");
-  if (cfg.windowTitle && cfg.regionOffset) {
-    hint.textContent = `Привязано к окну «${cfg.windowTitle}» — ${cfg.regionOffset.width}×${cfg.regionOffset.height}. Можно свободно двигать окно эмулятора, регион пересчитывается сам.`;
-  } else if (cfg.region) {
-    hint.textContent = `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y} (окно эмулятора не распознано — координаты фиксированные, при переносе окна нужно будет выбрать заново).`;
-  } else {
-    hint.textContent = "Область не выбрана.";
-  }
-  const activeHint = document.getElementById("clashMatchActiveHint");
-  activeHint.textContent = cfg.matchActiveTemplateFile
-    ? "Настроено — матч определяется по иконке эликсира."
-    : "Не настроено — счётчик стартует по первой распознанной карте (менее надёжно).";
-}
-
-function renderClashDeck(state, clashCardsById) {
-  document.getElementById("clashElixirValue").textContent = state.elixir.toFixed(1);
-  const phaseLabel = document.getElementById("clashPhaseLabel");
-  phaseLabel.textContent = state.overtime ? "x3 (овертайм)" : state.phaseMultiplier >= 2 ? "x2" : "x1";
-  const matchActiveLabel = document.getElementById("clashMatchActiveLabel");
-  if (matchActiveLabel) {
-    matchActiveLabel.textContent = state.matchActive === true ? "🟢 матч идёт" : state.matchActive === false ? "⚪ вне боя" : "";
-  }
-  const grid = document.getElementById("clashDeckGrid");
-  const slots = [];
-  for (let i = 0; i < 8; i++) {
-    const id = state.revealedOrder[i];
-    if (!id) {
-      slots.push(`<div class="clash-slot unknown">?</div>`);
-      continue;
-    }
-    const card = clashCardsById[id];
-    const cls = state.inHand.includes(id) ? "in-hand" : state.inQueue.includes(id) ? "in-queue" : "";
-    slots.push(
-      `<div class="clash-slot ${cls}"><img src="${card ? card.iconUrl : ""}" onerror="this.style.display='none'"/><span class="clash-slot-name">${escapeHtml(card ? card.name : id)}</span></div>`
-    );
-  }
-  grid.innerHTML = slots.join("");
-
-  const recentEl = document.getElementById("clashRecentPlays");
-  if (recentEl) {
-    if (!state.recentPlays || !state.recentPlays.length) {
-      recentEl.textContent = "Пока ничего не засчитано.";
-    } else {
-      const items = state.recentPlays
-        .slice()
-        .reverse()
-        .map((p) => {
-          const card = clashCardsById[p.cardId];
-          const name = escapeHtml(card ? card.name : p.cardId);
-          const t = new Date(p.at).toLocaleTimeString();
-          return `${name} (${t})`;
-        });
-      recentEl.textContent = "Последние: " + items.join(", ");
-    }
-  }
-}
-
-function setClashReviewCount(count) {
-  const badge = document.getElementById("clashReviewCount");
-  if (!badge) return;
-  badge.textContent = count ? String(count) : "";
-  badge.hidden = count === 0;
-}
-
-// Сам список теперь в отдельном окне (см. clash-review.html) — здесь только счётчик рядом с
-// кнопкой "Открыть разбор матча", обновляется через onClashPendingReviewCount ниже.
 
 function updateScheduleFieldsVisibility() {
   const mode = document.getElementById("scheduleRepeat").value;
@@ -878,66 +786,6 @@ function bindHandlers() {
   };
   document.getElementById("imageTriggerConfidenceSlider").addEventListener("change", (e) => saveImageConfidence(e.target.value));
   document.getElementById("imageTriggerConfidence").addEventListener("change", (e) => saveImageConfidence(e.target.value));
-
-  // Clash Royale — счётчик эликсира и колода противника
-  document.getElementById("clashEnabled").addEventListener("change", async (e) => {
-    if (!proUnlocked) return;
-    await save({ clashTracker: { ...settings.clashTracker, enabled: e.target.checked } });
-  });
-  document.getElementById("clashPickRegionBtn").addEventListener("click", async () => {
-    if (!proUnlocked) return;
-    const result = await window.api.pickClashRegion();
-    if (result.ok) {
-      await save({
-        clashTracker: {
-          ...settings.clashTracker,
-          region: result.region,
-          windowTitle: result.windowTitle,
-          regionOffset: result.regionOffset,
-        },
-      });
-      renderClashSettings();
-    }
-  });
-  document.getElementById("clashPickMatchActiveBtn").addEventListener("click", async () => {
-    if (!proUnlocked) return;
-    const result = await window.api.pickClashMatchActiveTemplate();
-    if (result.ok) {
-      await save({ clashTracker: { ...settings.clashTracker, matchActiveTemplateFile: result.templateFile } });
-      renderClashSettings();
-    } else if (result.error === "too-large") {
-      alert("Область слишком большая — это должна быть маленькая иконка эликсира (капля с числом), не всё поле и не весь экран. Попробуй ещё раз, выделив только саму иконку.");
-    }
-  });
-  document.getElementById("clashConfidenceSlider").addEventListener("input", (e) => {
-    document.getElementById("clashConfidence").value = e.target.value;
-  });
-  const saveClashConfidence = async (v) => {
-    const confidence = Math.max(50, Math.min(100, parseInt(v, 10) || 85)) / 100;
-    document.getElementById("clashConfidenceSlider").value = Math.round(confidence * 100);
-    document.getElementById("clashConfidence").value = Math.round(confidence * 100);
-    await save({ clashTracker: { ...settings.clashTracker, confidence } });
-  };
-  document.getElementById("clashConfidenceSlider").addEventListener("change", (e) => saveClashConfidence(e.target.value));
-  document.getElementById("clashConfidence").addEventListener("change", (e) => saveClashConfidence(e.target.value));
-  document.getElementById("clashMatchDuration").addEventListener("change", async (e) => {
-    await save({ clashTracker: { ...settings.clashTracker, matchDurationSec: Math.max(10, parseInt(e.target.value, 10) || 120) } });
-  });
-  document.getElementById("clashOvertimeMultiplier").addEventListener("change", async (e) => {
-    await save({ clashTracker: { ...settings.clashTracker, overtimeMultiplier: Math.max(1, parseInt(e.target.value, 10) || 3) } });
-  });
-  document.getElementById("clashStartMatchBtn").addEventListener("click", () => window.api.startClashMatch());
-  document.getElementById("clashOvertimeBtn").addEventListener("click", () => window.api.startClashOvertime());
-  document.getElementById("clashResetBtn").addEventListener("click", () => window.api.resetClash());
-  document.getElementById("clashUndoBtn").addEventListener("click", () => window.api.undoClashLastPlay());
-  document.getElementById("clashManualAddBtn").addEventListener("click", () => {
-    const input = document.getElementById("clashManualCardInput");
-    const card = (window.clashCardsList || []).find((c) => c.name.toLowerCase() === input.value.trim().toLowerCase());
-    if (!card) return;
-    window.api.recordClashManualPlay(card.id);
-    input.value = "";
-  });
-  document.getElementById("clashOpenReviewBtn").addEventListener("click", () => window.api.openClashReviewWindow());
 
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {
@@ -1550,17 +1398,6 @@ async function init() {
   renderClipboardList(await window.api.getClipboardHistory());
   renderNotesList(await window.api.listNotes());
   showUpdateNotice(await window.api.getUpdateInfo());
-
-  const clashCards = await window.api.getClashCards();
-  const clashCardsById = {};
-  clashCards.forEach((c) => (clashCardsById[c.id] = c));
-  window.clashCardsList = clashCards;
-  document.getElementById("clashCardDatalist").innerHTML = clashCards
-    .map((c) => `<option value="${escapeHtml(c.name)}"></option>`)
-    .join("");
-  renderClashDeck(await window.api.getClashState(), clashCardsById);
-  window.api.onClashState((state) => renderClashDeck(state, clashCardsById));
-  window.api.onClashPendingReviewCount((count) => setClashReviewCount(count));
 }
 
 init();
