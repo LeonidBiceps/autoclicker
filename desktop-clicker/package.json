@@ -1,8 +1,9 @@
 {
   "name": "autoclicker-desktop",
-  "version": "2.30.0",
+  "version": "2.31.0",
   "private": true,
   "description": "МультиТул — автоматизация под Windows: автокликер, макросы, бинды, триггер по цвету. Работает в любом окне/игре.",
+  "author": "Biceps",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -25,6 +26,7 @@
   "build": {
     "appId": "com.example.autoclicker-desktop",
     "productName": "МультиТул",
+    "copyright": "Copyright © Biceps",
     "npmRebuild": false,
     "win": {
       "target": "portable",

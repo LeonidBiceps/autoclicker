@@ -74,6 +74,13 @@ body {
   font-weight: 700;
 }
 
+.sidebar-author {
+  padding: 0 14px 10px;
+  margin-top: -8px;
+  font-size: 11px;
+  color: #6b7080;
+}
+
 .sidebar-status {
   padding: 0 14px 14px;
   border-bottom: 1px solid #21242c;
