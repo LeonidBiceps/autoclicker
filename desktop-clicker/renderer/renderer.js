@@ -178,6 +178,8 @@ function updateProUI() {
   document.getElementById("colorTriggerBadge").hidden = proUnlocked;
   document.getElementById("ocrBadge").hidden = proUnlocked;
   document.getElementById("ocrTabBadge").hidden = proUnlocked;
+  document.getElementById("valueWatcherBadge").hidden = proUnlocked;
+  document.getElementById("valueWatcherTabBadge").hidden = proUnlocked;
   document.getElementById("textTriggerBadge").hidden = proUnlocked;
   document.getElementById("recordBadge").hidden = proUnlocked;
   document.getElementById("recordTabBadge").hidden = proUnlocked;
@@ -231,7 +233,13 @@ function updateProUI() {
     "imageTriggerConfidenceSlider",
     "imageTriggerConfidence",
     "turboModeEnabled",
+    "nativeTurboModeEnabled",
     "sequenceClickAllEnabled",
+    "valueWatcherEnabled",
+    "valueWatcherPickBtn",
+    "valueWatcherLang",
+    "valueWatcherInterval",
+    "valueWatcherNotifyTelegram",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -293,6 +301,7 @@ function loadIntoForm() {
   document.getElementById("positionJitterPxValue").textContent = settings.positionJitterPx;
 
   document.getElementById("turboModeEnabled").checked = !!settings.turboMode;
+  document.getElementById("nativeTurboModeEnabled").checked = !!settings.nativeTurboMode;
   updateTurboModeHint();
   document.getElementById("sequenceClickAllEnabled").checked = !!settings.sequenceClickAll;
 
@@ -306,6 +315,7 @@ function loadIntoForm() {
 
   renderTextTrigger();
   renderImageTrigger();
+  renderValueWatcher();
 
   document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
   document.getElementById("antiAfkIntervalSec").value = settings.antiAfkIntervalSec || 45;
@@ -365,6 +375,32 @@ function renderImageTrigger() {
   document.getElementById("imageTriggerConfidence").value = confidence;
   const hint = document.getElementById("imageTriggerHint");
   hint.textContent = trigger.templateFile ? `Образец: ${trigger.width}×${trigger.height}` : "Образец не выбран.";
+}
+
+function renderValueWatcher() {
+  const cfg = settings.valueWatcher || {};
+  document.getElementById("valueWatcherEnabled").checked = !!cfg.enabled;
+  document.getElementById("valueWatcherLang").value = cfg.lang || "rus+eng";
+  document.getElementById("valueWatcherInterval").value = cfg.pollIntervalSec || 15;
+  document.getElementById("valueWatcherNotifyTelegram").checked = cfg.notifyTelegram !== false;
+  const hint = document.getElementById("valueWatcherRegionHint");
+  hint.textContent = cfg.region
+    ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
+    : "Область не выбрана.";
+  document.getElementById("valueWatcherCurrent").textContent = cfg.lastValue || "—";
+  renderValueWatcherHistory(cfg.history || []);
+}
+
+function renderValueWatcherHistory(history) {
+  const list = document.getElementById("valueWatcherHistory");
+  if (!history.length) {
+    list.innerHTML = `<div class="empty-hint">📊 Пока нет изменений</div>`;
+    return;
+  }
+  list.innerHTML = [...history]
+    .reverse()
+    .map((e) => `<div class="macro-item"><span>${escapeHtml(new Date(e.ts).toLocaleString("ru-RU"))} — ${escapeHtml(e.value)}</span></div>`)
+    .join("");
 }
 
 function updateScheduleFieldsVisibility() {
@@ -614,6 +650,9 @@ function bindHandlers() {
     await save({ turboMode: e.target.checked });
     updateTurboModeHint();
   });
+  document.getElementById("nativeTurboModeEnabled").addEventListener("change", async (e) => {
+    await save({ nativeTurboMode: e.target.checked });
+  });
   document.getElementById("sequenceClickAllEnabled").addEventListener("change", async (e) => {
     await save({ sequenceClickAll: e.target.checked });
   });
@@ -786,6 +825,38 @@ function bindHandlers() {
   };
   document.getElementById("imageTriggerConfidenceSlider").addEventListener("change", (e) => saveImageConfidence(e.target.value));
   document.getElementById("imageTriggerConfidence").addEventListener("change", (e) => saveImageConfidence(e.target.value));
+
+  // Наблюдатель значений
+  document.getElementById("valueWatcherEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ valueWatcher: { ...settings.valueWatcher, enabled: e.target.checked } });
+  });
+  document.getElementById("valueWatcherPickBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickValueWatcherRegion();
+    if (result.ok) {
+      await save({ valueWatcher: { ...settings.valueWatcher, region: result.region } });
+      renderValueWatcher();
+    }
+  });
+  document.getElementById("valueWatcherLang").addEventListener("change", (e) => save({ valueWatcher: { ...settings.valueWatcher, lang: e.target.value } }));
+  document.getElementById("valueWatcherInterval").addEventListener("change", async (e) => {
+    await save({ valueWatcher: { ...settings.valueWatcher, pollIntervalSec: Math.max(3, parseInt(e.target.value, 10) || 15) } });
+  });
+  document.getElementById("valueWatcherNotifyTelegram").addEventListener("change", (e) =>
+    save({ valueWatcher: { ...settings.valueWatcher, notifyTelegram: e.target.checked } })
+  );
+  document.getElementById("valueWatcherClearBtn").addEventListener("click", async () => {
+    await window.api.clearValueWatcherHistory();
+    settings = (await window.api.getSettings()).settings;
+    renderValueWatcher();
+  });
+  window.api.onValueWatcherChanged(() => {
+    (async () => {
+      settings = (await window.api.getSettings()).settings;
+      renderValueWatcher();
+    })();
+  });
 
   // Анти-АФК
   document.getElementById("antiAfkEnabled").addEventListener("change", async (e) => {

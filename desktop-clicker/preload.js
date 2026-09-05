@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("api", {
   copyText: (text) => clipboard.writeText(text),
   pickTextTriggerRegion: () => ipcRenderer.invoke("textTrigger:pickRegion"),
   pickImageTriggerTemplate: () => ipcRenderer.invoke("imageTrigger:pickTemplate"),
+  pickValueWatcherRegion: () => ipcRenderer.invoke("valueWatcher:pickRegion"),
+  clearValueWatcherHistory: () => ipcRenderer.invoke("valueWatcher:clearHistory"),
+  onValueWatcherChanged: (callback) => ipcRenderer.on("valueWatcher:changed", (_e, payload) => callback(payload)),
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),
   stopRecordingScreen: () => ipcRenderer.invoke("record:stop"),

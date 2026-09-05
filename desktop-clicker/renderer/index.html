@@ -43,6 +43,7 @@
 
         <div class="nav-group-label" data-group="tools-group">Инструменты</div>
         <button class="nav-item" data-target="ocr" data-group="tools-group" data-keywords="ocr текст с экрана распознавание область"><span class="nav-icon">🔎</span> Текст с экрана <span class="pro-badge tiny" id="ocrTabBadge">Pro</span></button>
+        <button class="nav-item" data-target="value-watcher" data-group="tools-group" data-keywords="наблюдатель значение цена счёт таймер число изменение уведомление парсинг мониторинг"><span class="nav-icon">📊</span> Наблюдатель значений <span class="pro-badge tiny" id="valueWatcherTabBadge">Pro</span></button>
         <button class="nav-item" data-target="record" data-group="tools-group" data-keywords="запись экрана видео таймлапс монитор индикатор rec"><span class="nav-icon">🎥</span> Запись экрана <span class="pro-badge tiny" id="recordTabBadge">Pro</span></button>
         <button class="nav-item" data-target="clipboard" data-group="tools-group" data-keywords="буфер обмена копировать история текст"><span class="nav-icon">📎</span> Буфер обмена</button>
         <button class="nav-item" data-target="notes" data-group="tools-group" data-keywords="заметки sticky notes картинки цвет закрепить шрифт жирный курсив"><span class="nav-icon">🗒</span> Заметки</button>
@@ -201,6 +202,15 @@
             </span>
             <span class="switch">
               <input type="checkbox" id="turboModeEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <label class="switch-row">
+            <span>Нативный турбо (экспериментально) — цикл кликов крутится в нативном модуле, а не в JS
+              <span title="Заметно быстрее обычного турбо, но работает только для самого простого случая: клик мышью по курсору или фиксированной точке, без разброса позиции, без триггеров и без последовательности точек — в остальных случаях тихо используется обычный турбо-режим">ⓘ</span>
+            </span>
+            <span class="switch">
+              <input type="checkbox" id="nativeTurboModeEnabled" />
               <span class="switch-slider"></span>
             </span>
           </label>
@@ -489,6 +499,64 @@
             <textarea id="ocrResult" rows="8" readonly placeholder="Здесь появится распознанный текст"></textarea>
             <div class="row">
               <button id="ocrCopyBtn" class="secondary-btn">Скопировать</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="value-watcher" hidden>
+        <h1>📊 Наблюдатель значений <span class="pro-badge" id="valueWatcherBadge">Pro</span></h1>
+        <p class="hint">Следит за произвольным значением на экране — цена, счёт в игре, таймер,
+          что угодно текстовое или числовое — и уведомляет, когда оно МЕНЯЕТСЯ. Работает в любом
+          приложении, не только в браузере, независимо от того, включён ли сам кликер.</p>
+        <section>
+          <h2>⚙ Настройка</h2>
+          <label class="switch-row">
+            <span>Следить за значением</span>
+            <span class="switch">
+              <input type="checkbox" id="valueWatcherEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <div class="row">
+              <button id="valueWatcherPickBtn" class="secondary-btn">Область значения</button>
+            </div>
+            <p class="hint" id="valueWatcherRegionHint">Область не выбрана.</p>
+          </div>
+          <div class="field">
+            <label for="valueWatcherLang">Язык распознавания</label>
+            <select id="valueWatcherLang">
+              <option value="rus+eng">Русский + English</option>
+              <option value="rus">Русский</option>
+              <option value="eng">English</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="valueWatcherInterval" title="Как часто проверять область">Опрос, сек</label>
+            <input type="number" id="valueWatcherInterval" min="3" step="1" />
+          </div>
+          <label class="switch-row">
+            <span>Уведомлять в Telegram при изменении</span>
+            <span class="switch">
+              <input type="checkbox" id="valueWatcherNotifyTelegram" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <p class="hint">Область выбирай так, чтобы в неё попадало только само значение (без
+            лишнего текста рядом) — точность распознавания заметно выше на маленькой чистой
+            области, чем на большом куске экрана.</p>
+        </section>
+
+        <section>
+          <h2>📈 Текущее значение и история</h2>
+          <div class="field">
+            <span id="valueWatcherCurrent" class="hint" style="font-size: 16px; font-weight: 700;">—</span>
+          </div>
+          <div class="field">
+            <div id="valueWatcherHistory"></div>
+            <div class="row">
+              <button id="valueWatcherClearBtn" class="secondary-btn">Очистить историю</button>
             </div>
           </div>
         </section>

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+desktop-clicker/native-clicker/target/
 *.log
 .DS_Store
 Thumbs.db

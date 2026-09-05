@@ -42,10 +42,23 @@ keyboard.config.autoDelayMs = 0;
 // через таймер-хип event loop'а на каждый клик. Внутри же сам providerRegistry.getMouse()/
 // getKeyboard() — это уже голый нативный биндинг (`libnut.mouseClick(...)` и т.п.) без единой
 // задержки. Идём напрямую к нему в горячем пути (clickButton/performClick), а не через обёртку —
-// не переписывая сам nut-js и не добавляя свой нативный модуль, а просто убирая один
-// лишний JS-слой, который сам nut-js уже не заставляет использовать.
+// это не требует переписывать сам nut-js.
 const nativeMouse = providerRegistry.getMouse();
 const nativeKeyboard = providerRegistry.getKeyboard();
+
+// Следующий рывок после прямого нативного биндинга выше — уже не в самом клике (там уже нечего
+// ускорять), а в JS/event-loop накладных расходах ВОКРУГ него: несколько await на тик, планирование
+// следующего тика через setImmediate. Настоящий выигрыш даёт перенос ВСЕГО цикла кликов в нативный
+// код (см. native-clicker/), а не замена одного нативного вызова на другой — JS вызывается один раз
+// на старте burst'а и один раз на остановке, а не сотни/тысячи раз в секунду. См. startNativeTurbo().
+// Модуль опционален: если файл не собран под текущую платформу — просто нет нативного турбо-режима,
+// обычный (JS) турбо-режим работает как и раньше.
+let nativeClicker = null;
+try {
+  nativeClicker = require("./native-clicker/native-clicker.win32-x64-msvc.node");
+} catch (e) {
+  nativeClicker = null;
+}
 
 const FREE_SESSION_CLICK_CAP = 5000;
 
@@ -57,6 +70,8 @@ let seqMarkerWindows = [];
 let running = false;
 let proUnlocked = false;
 let timerId = null;
+let nativeBurstActive = false;
+let nativeBurstStatusTimer = null;
 let sessionClicks = 0;
 let sessionStartedAt = 0;
 let sequenceIndex = 0;
@@ -374,6 +389,62 @@ function scheduleNext() {
   }
 }
 
+// Нативный турбо годится только для самого простого случая — чистый спам-клик мышью без ничего
+// сверху. Всё, что требует принятия решения НА КАЖДЫЙ клик (условие триггера, следующая точка
+// последовательности, случайный разброс позиции), нативный burst сделать не может — он крутится
+// сам по себе в отдельном потоке, JS не участвует, пока не позовут stopBurst(). В любом из этих
+// случаев тихо остаёмся на обычном (JS) турбо-режиме — никакого предупреждения не нужно, разница
+// не в корректности, а только в скорости.
+function canUseNativeTurbo(settings) {
+  if (!nativeClicker || !proUnlocked || !settings.turboMode || !settings.nativeTurboMode) return false;
+  if (settings.actionType !== "mouse" || settings.button === "double") return false;
+  if (settings.mode === "sequence") return false;
+  if (settings.positionJitterPx > 0) return false;
+  if (settings.colorTrigger && settings.colorTrigger.enabled) return false;
+  if (settings.textTrigger && settings.textTrigger.enabled) return false;
+  if (settings.imageTrigger && settings.imageTrigger.enabled) return false;
+  if ((settings.targetWindowTitle || "").trim()) return false;
+  if (settings.mode === "point" && !settings.fixedPoint) return false;
+  return true;
+}
+
+function startNativeTurbo(settings) {
+  const action = settings.button === "right" ? "mouse-right" : "mouse-left";
+  const durationMs = settings.stopAfterMs > 0 ? settings.stopAfterMs : 0;
+  const beginBurst = () => {
+    nativeClicker.startBurst(action, 0, 0, durationMs);
+    nativeBurstActive = true;
+    // Опрашиваем счётчик редко (не на каждый клик — их сотни/тысячи в секунду, сам смысл нативного
+    // режима как раз в том, чтобы JS в это не лез) — только чтобы обновлять HUD и проверять лимиты
+    // остановки. Из-за этого лимит "остановить после N кликов" в нативном режиме может немного
+    // "перебрать" (до нескольких сотен кликов сверху при таких скоростях) —цена простоты, турбо и
+    // так не про точность, а про скорость.
+    nativeBurstStatusTimer = setInterval(() => {
+      sessionClicks = nativeClicker.getBurstCount();
+      updateHud(`● ${sessionClicks} кликов`);
+      sendStatus();
+      if (settings.stopAfterClicks > 0 && sessionClicks >= settings.stopAfterClicks) {
+        stopClicking("Остановлено: набран лимит кликов");
+      } else if (!nativeClicker.isBurstRunning()) {
+        stopClicking(durationMs > 0 ? "Остановлено: вышло время" : undefined);
+      }
+    }, 200);
+  };
+  if (settings.mode === "point" && settings.fixedPoint) {
+    mouse.setPosition(new Point(settings.fixedPoint.x, settings.fixedPoint.y)).then(beginBurst);
+  } else {
+    beginBurst();
+  }
+}
+
+function finishNativeTurbo() {
+  if (!nativeBurstActive) return;
+  sessionClicks = nativeClicker.stopBurst();
+  if (nativeBurstStatusTimer) clearInterval(nativeBurstStatusTimer);
+  nativeBurstStatusTimer = null;
+  nativeBurstActive = false;
+}
+
 function startClicking() {
   if (running) return;
   const settings = store.getAll();
@@ -392,12 +463,16 @@ function startClicking() {
   sendStatus();
   createHud();
   updateHud("● 0 кликов");
-  // Опрос всегда запускается на весь сеанс клика, а не только когда триггер включён в этот момент —
-  // сам опрос дешёвый (проверяет настройки и сразу выходит, если триггер выключен), а взамен
-  // включение/изменение триггера прямо во время работы кликера подхватывается само, без рестарта.
-  startTextTriggerPolling();
-  startImageTriggerPolling();
-  scheduleNext();
+  if (canUseNativeTurbo(settings)) {
+    startNativeTurbo(settings);
+  } else {
+    // Опрос всегда запускается на весь сеанс клика, а не только когда триггер включён в этот момент —
+    // сам опрос дешёвый (проверяет настройки и сразу выходит, если триггер выключен), а взамен
+    // включение/изменение триггера прямо во время работы кликера подхватывается само, без рестарта.
+    startTextTriggerPolling();
+    startImageTriggerPolling();
+    scheduleNext();
+  }
   logActivity("🟢 Кликер запущен");
   notifyTelegram("🟢 Кликер запущен");
 }
@@ -406,6 +481,7 @@ function stopClicking(note) {
   running = false;
   clearTimeout(timerId);
   clearImmediate(timerId);
+  finishNativeTurbo();
   stopTextTriggerPolling();
   stopImageTriggerPolling();
   sendStatus();
@@ -968,6 +1044,63 @@ async function runOcr(region, lang) {
   }
 }
 
+// --- Наблюдатель за значением на экране (Pro) ---
+//
+// В отличие от "Текстового триггера" (проверяет, появился ли ОЖИДАЕМЫЙ текст, чтобы разрешить
+// клик), это отдельная функция: следит за ЛЮБЫМ значением в выбранной области (цена, счёт в игре,
+// таймер, что угодно — работает в любом приложении, не только в браузере) и уведомляет, когда оно
+// МЕНЯЕТСЯ — не важно, работает ли в этот момент сам кликер. Полностью независимый таймер.
+let valueWatcherTimer = null;
+let valueWatcherPolling = false;
+
+function normalizeWatcherValue(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+async function valueWatcherPollTick() {
+  if (valueWatcherPolling) return; // OCR — не мгновенная операция, не запускаем второй проход поверх первого
+  const cfg = store.get("valueWatcher");
+  if (!proUnlocked || !cfg.enabled || !cfg.region) return;
+  valueWatcherPolling = true;
+  try {
+    const result = await runOcr(cfg.region, cfg.lang || "rus+eng");
+    if (!result.ok) return;
+    const value = normalizeWatcherValue(result.text);
+    if (!value) return; // пустое распознавание (ничего не видно/область пуста) — не считаем это "изменением"
+    const fresh = store.get("valueWatcher"); // могло измениться, пока шёл OCR (пользователь поменял настройку)
+    if (value === fresh.lastValue) return;
+    const previous = fresh.lastValue;
+    const history = [...(fresh.history || []), { ts: Date.now(), value }].slice(-50);
+    store.set({ valueWatcher: { ...fresh, lastValue: value, history } });
+    notifyValueWatcher({ value, previous, at: Date.now() });
+    // Первое чтение после включения — это просто база для сравнения, не "изменение", уведомлять не о чем.
+    if (previous !== null) {
+      logActivity(`📊 Значение изменилось: ${previous} → ${value}`);
+      if (fresh.notifyTelegram) notifyTelegram(`📊 Значение изменилось: ${previous} → ${value}`);
+    }
+  } catch (e) {
+    // сбой одного опроса не должен останавливать наблюдение целиком
+  } finally {
+    valueWatcherPolling = false;
+  }
+}
+
+function notifyValueWatcher(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("valueWatcher:changed", payload);
+}
+
+function startValueWatcherPolling(cfg) {
+  stopValueWatcherPolling();
+  valueWatcherPolling = false;
+  valueWatcherTimer = setInterval(valueWatcherPollTick, Math.max(3, cfg.pollIntervalSec || 15) * 1000);
+  valueWatcherPollTick();
+}
+
+function stopValueWatcherPolling() {
+  if (valueWatcherTimer) clearInterval(valueWatcherTimer);
+  valueWatcherTimer = null;
+}
+
 // --- Key capture (for keyboard auto-press mode) ---
 
 function captureNextKey() {
@@ -1510,6 +1643,11 @@ ipcMain.handle("settings:set", (event, partial) => {
     if (partial.clipboardHistoryEnabled) startClipboardPolling();
     else stopClipboardPolling();
   }
+  if ("valueWatcher" in partial) {
+    const cfg = store.get("valueWatcher");
+    if (cfg.enabled && cfg.region) startValueWatcherPolling(cfg);
+    else stopValueWatcherPolling();
+  }
   return store.getAll();
 });
 
@@ -1822,6 +1960,17 @@ ipcMain.handle("textTrigger:pickRegion", async () => {
   return { ok: true, region };
 });
 
+ipcMain.handle("valueWatcher:pickRegion", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  return { ok: true, region };
+});
+ipcMain.handle("valueWatcher:clearHistory", () => {
+  const cfg = store.get("valueWatcher");
+  store.set({ valueWatcher: { ...cfg, history: [], lastValue: null } });
+});
+
 // Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою
 // папку, дальше nut-js screen.find() ищет её на экране целиком.
 ipcMain.handle("imageTrigger:pickTemplate", async () => {
@@ -2077,6 +2226,7 @@ app.whenReady().then(async () => {
   if (store.get("antiAfkEnabled")) startAntiAfk();
   if (store.get("idleStartEnabled")) startIdleStartPolling();
   if (store.get("clipboardHistoryEnabled")) startClipboardPolling();
+  if (store.get("valueWatcher").enabled && store.get("valueWatcher").region) startValueWatcherPolling(store.get("valueWatcher"));
   restoreStickyNotes();
   nutScreen.config.resourceDirectory = getImageTemplatesDir(); // для триггера по картинке — imageResource() ищет файлы относительно этой папки
   providerRegistry.registerImageFinder(new JimpImageFinder()); // в nut-js нет готового ImageFinder — используем свой (см. image-finder.js)
