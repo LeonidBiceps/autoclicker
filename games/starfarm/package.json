@@ -1,7 +1,0 @@
-{
-  "name": "@yg/starfarm",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Космоферма — idle-кликер с офлайн-доходом и перезапусками"
-}
