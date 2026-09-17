@@ -240,6 +240,8 @@ function updateProUI() {
     "valueWatcherLang",
     "valueWatcherInterval",
     "valueWatcherNotifyTelegram",
+    "valueWatcherThresholdMode",
+    "valueWatcherThresholdValue",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -383,6 +385,9 @@ function renderValueWatcher() {
   document.getElementById("valueWatcherLang").value = cfg.lang || "rus+eng";
   document.getElementById("valueWatcherInterval").value = cfg.pollIntervalSec || 15;
   document.getElementById("valueWatcherNotifyTelegram").checked = cfg.notifyTelegram !== false;
+  document.getElementById("valueWatcherThresholdMode").value = cfg.thresholdMode || "any";
+  document.getElementById("valueWatcherThresholdValue").value = cfg.thresholdValue ?? "";
+  document.getElementById("valueWatcherThresholdValueField").hidden = (cfg.thresholdMode || "any") === "any";
   const hint = document.getElementById("valueWatcherRegionHint");
   hint.textContent = cfg.region
     ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
@@ -846,6 +851,14 @@ function bindHandlers() {
   document.getElementById("valueWatcherNotifyTelegram").addEventListener("change", (e) =>
     save({ valueWatcher: { ...settings.valueWatcher, notifyTelegram: e.target.checked } })
   );
+  document.getElementById("valueWatcherThresholdMode").addEventListener("change", async (e) => {
+    document.getElementById("valueWatcherThresholdValueField").hidden = e.target.value === "any";
+    await save({ valueWatcher: { ...settings.valueWatcher, thresholdMode: e.target.value } });
+  });
+  document.getElementById("valueWatcherThresholdValue").addEventListener("change", async (e) => {
+    const v = e.target.value.trim();
+    await save({ valueWatcher: { ...settings.valueWatcher, thresholdValue: v === "" ? null : parseFloat(v) } });
+  });
   document.getElementById("valueWatcherClearBtn").addEventListener("click", async () => {
     await window.api.clearValueWatcherHistory();
     settings = (await window.api.getSettings()).settings;

@@ -28,7 +28,7 @@ const { verifyLicenseKey, getMachineId } = require("./license");
 const { mouse, keyboard, screen: nutScreen, Point, Button, Region, FileType, getActiveWindow, imageResource, providerRegistry } = require("@nut-tree-fork/nut-js");
 const { JimpImageFinder } = require("./image-finder");
 const { uIOhook } = require("uiohook-napi");
-const { keycodeToName, resolveNutjsKey } = require("./keymap");
+const { keycodeToName, resolveNutjsKey, resolveVkCode } = require("./keymap");
 const Tesseract = require("tesseract.js");
 
 mouse.config.autoDelayMs = 0;
@@ -397,22 +397,28 @@ function scheduleNext() {
 // не в корректности, а только в скорости.
 function canUseNativeTurbo(settings) {
   if (!nativeClicker || !proUnlocked || !settings.turboMode || !settings.nativeTurboMode) return false;
-  if (settings.actionType !== "mouse" || settings.button === "double") return false;
-  if (settings.mode === "sequence") return false;
-  if (settings.positionJitterPx > 0) return false;
   if (settings.colorTrigger && settings.colorTrigger.enabled) return false;
   if (settings.textTrigger && settings.textTrigger.enabled) return false;
   if (settings.imageTrigger && settings.imageTrigger.enabled) return false;
   if ((settings.targetWindowTitle || "").trim()) return false;
+  // Клавиатура уже сегодня игнорирует mode/разброс позиции/точку и в обычном JS-цикле
+  // (performClick() уходит на неё веткой раньше любых проверок ниже) — проверять тут нечего сверх
+  // общих условий выше.
+  if (settings.actionType === "keyboard") return true;
+  if (settings.actionType !== "mouse" || settings.button === "double") return false;
+  if (settings.mode === "sequence") return false;
+  if (settings.positionJitterPx > 0) return false;
   if (settings.mode === "point" && !settings.fixedPoint) return false;
   return true;
 }
 
 function startNativeTurbo(settings) {
-  const action = settings.button === "right" ? "mouse-right" : "mouse-left";
+  const isKeyboard = settings.actionType === "keyboard";
+  const action = isKeyboard ? "key" : settings.button === "right" ? "mouse-right" : "mouse-left";
+  const vkCode = isKeyboard ? resolveVkCode(settings.keyToPress) : 0;
   const durationMs = settings.stopAfterMs > 0 ? settings.stopAfterMs : 0;
   const beginBurst = () => {
-    nativeClicker.startBurst(action, 0, 0, durationMs);
+    nativeClicker.startBurst(action, vkCode, 0, durationMs);
     nativeBurstActive = true;
     // Опрашиваем счётчик редко (не на каждый клик — их сотни/тысячи в секунду, сам смысл нативного
     // режима как раз в том, чтобы JS в это не лез) — только чтобы обновлять HUD и проверять лимиты
@@ -430,7 +436,7 @@ function startNativeTurbo(settings) {
       }
     }, 200);
   };
-  if (settings.mode === "point" && settings.fixedPoint) {
+  if (!isKeyboard && settings.mode === "point" && settings.fixedPoint) {
     mouse.setPosition(new Point(settings.fixedPoint.x, settings.fixedPoint.y)).then(beginBurst);
   } else {
     beginBurst();
@@ -1057,6 +1063,50 @@ function normalizeWatcherValue(text) {
   return text.replace(/\s+/g, " ").trim();
 }
 
+// Достаёт число из распознанного OCR-текста — в кропе кроме самого значения часто есть символ
+// валюты, единицы и т.п. Эвристика, тот же принцип, что и у бейджа "цена за единицу" в
+// price-tracker расширении — не гарантия, а лучшее разумное приближение. Пробел (обычный и
+// неразрывный, его вставляет Tesseract на месте разделителя тысяч в русской локали) внутри числа
+// не считается концом числа.
+function extractNumber(text) {
+  const match = text.match(/-?[\d\s ]*\d(?:[.,]\d+)*/);
+  if (!match) return null;
+  let raw = match[0].replace(/[\s ]/g, "");
+  const decimalPos = Math.max(raw.lastIndexOf("."), raw.lastIndexOf(","));
+  if (decimalPos === -1) {
+    const num = parseFloat(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+  const afterDecimal = raw.length - decimalPos - 1;
+  const hasBothSeparators = raw.includes(".") && raw.includes(",");
+  if (!hasBothSeparators && afterDecimal === 3) {
+    // ровно 3 цифры после единственного вида разделителя — скорее разделитель тысяч (1 234), а не
+    // десятичная часть (тем более что цена редко бывает с 3 знаками после запятой)
+    raw = raw.replace(/[.,]/g, "");
+  } else {
+    // последний разделитель — десятичный, всё, что до него, — разделители тысяч, убираем их
+    raw = `${raw.slice(0, decimalPos).replace(/[.,]/g, "")}.${raw.slice(decimalPos + 1)}`;
+  }
+  const num = parseFloat(raw);
+  return Number.isFinite(num) ? num : null;
+}
+
+// Порог — не "уведомлять на любое изменение", а "уведомлять, когда число ВОШЛО в нужную зону" (для
+// "below" — только в момент, когда упало ниже порога, не на каждом следующем чтении, пока остаётся
+// там же — иначе дребезг OCR около границы засыпал бы уведомлениями). Если число не распозналось
+// или порог не задан — молчим, а не гадаем.
+function shouldNotifyThreshold(cfg, previousText, newText) {
+  if (!cfg.thresholdMode || cfg.thresholdMode === "any" || cfg.thresholdValue === null || cfg.thresholdValue === undefined) {
+    return true;
+  }
+  const newNum = extractNumber(newText);
+  if (newNum === null) return false;
+  const prevNum = previousText !== null ? extractNumber(previousText) : null;
+  const inZone = (n) => (cfg.thresholdMode === "below" ? n < cfg.thresholdValue : n > cfg.thresholdValue);
+  const wasInZone = prevNum !== null && inZone(prevNum);
+  return inZone(newNum) && !wasInZone;
+}
+
 async function valueWatcherPollTick() {
   if (valueWatcherPolling) return; // OCR — не мгновенная операция, не запускаем второй проход поверх первого
   const cfg = store.get("valueWatcher");
@@ -1074,7 +1124,7 @@ async function valueWatcherPollTick() {
     store.set({ valueWatcher: { ...fresh, lastValue: value, history } });
     notifyValueWatcher({ value, previous, at: Date.now() });
     // Первое чтение после включения — это просто база для сравнения, не "изменение", уведомлять не о чем.
-    if (previous !== null) {
+    if (previous !== null && shouldNotifyThreshold(fresh, previous, value)) {
       logActivity(`📊 Значение изменилось: ${previous} → ${value}`);
       if (fresh.notifyTelegram) notifyTelegram(`📊 Значение изменилось: ${previous} → ${value}`);
     }

@@ -544,6 +544,18 @@
               <span class="switch-slider"></span>
             </span>
           </label>
+          <div class="field">
+            <label for="valueWatcherThresholdMode">Когда уведомлять</label>
+            <select id="valueWatcherThresholdMode">
+              <option value="any">На любое изменение</option>
+              <option value="below">Только когда число упало НИЖЕ порога</option>
+              <option value="above">Только когда число поднялось ВЫШЕ порога</option>
+            </select>
+          </div>
+          <div class="field" id="valueWatcherThresholdValueField" hidden>
+            <label for="valueWatcherThresholdValue" title="Число извлекается из распознанного текста — та же эвристика, что и в price-tracker расширении, не гарантия для любого формата">Порог</label>
+            <input type="number" id="valueWatcherThresholdValue" step="any" placeholder="например, 999" />
+          </div>
           <p class="hint">Область выбирай так, чтобы в неё попадало только само значение (без
             лишнего текста рядом) — точность распознавания заметно выше на маленькой чистой
             области, чем на большом куске экрана.</p>

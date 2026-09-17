@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS = {
     lang: "rus+eng",
     pollIntervalSec: 15,
     notifyTelegram: true,
+    thresholdMode: "any", // "any" (любое изменение) | "below" (только когда число упало НИЖЕ thresholdValue) | "above" (поднялось выше)
+    thresholdValue: null, // число для сравнения — извлекается из OCR-текста тем же способом, что и в price-tracker расширении (эвристика, не гарантия)
     lastValue: null, // последний распознанный текст — база для сравнения на следующем опросе
     history: [], // [{ ts, value }, ...] — последние 50 замеченных изменений
   },
