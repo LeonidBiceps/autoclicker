@@ -208,10 +208,20 @@
           </label>
           <label class="switch-row">
             <span>Нативный турбо (экспериментально) — цикл кликов крутится в нативном модуле, а не в JS
-              <span title="Заметно быстрее обычного турбо, но работает только для самого простого случая: клик мышью по курсору или фиксированной точке, без разброса позиции, без триггеров и без последовательности точек — в остальных случаях тихо используется обычный турбо-режим">ⓘ</span>
+              <span title="Заметно быстрее обычного турбо. Поддерживает мышь (включая двойной клик и разброс позиции) и клавиатуру. Не работает вместе с триггерами, привязкой к окну, последовательностью точек и плавным движением мыши — в этих случаях тихо используется обычный турбо-режим">ⓘ</span>
             </span>
             <span class="switch">
               <input type="checkbox" id="nativeTurboModeEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <label class="switch-row">
+            <span>Плавное движение мыши к точке клика
+              <span class="pro-badge" id="smoothMovementBadge">Pro</span>
+              <span title="Курсор едет к точке клика плавно, с ускорением и замедлением, а не телепортируется мгновенно — для игр/сервисов с антифродом, которые считают мгновенный прыжок курсора подозрительным. Заметно медленнее — несовместимо с нативным турбо, и на практике имеет смысл только вне обычного турбо-режима тоже">ⓘ</span>
+            </span>
+            <span class="switch">
+              <input type="checkbox" id="smoothMovementEnabled" />
               <span class="switch-slider"></span>
             </span>
           </label>
@@ -308,6 +318,51 @@
               <input type="range" id="imageTriggerConfidenceSlider" min="50" max="100" step="1" />
               <input type="number" id="imageTriggerConfidence" min="50" max="100" step="1" class="slider-number" />
             </div>
+          </div>
+        </section>
+
+        <section id="stopTriggerSection">
+          <h2>🛑 Стоп-триггер <span class="pro-badge" id="stopTriggerBadge">Pro</span>
+            <span title="В отличие от триггеров выше, которые лишь пропускают клик — этот полностью останавливает кликер, как только условие выполнено: «уровень пройден», «инвентарь полон», всплывшая капча или окно ошибки">ⓘ</span></h2>
+          <label class="switch-row">
+            <span>Останавливать кликер по условию</span>
+            <span class="switch">
+              <input type="checkbox" id="stopTriggerEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <label for="stopTriggerType">Условие</label>
+            <select id="stopTriggerType">
+              <option value="color">Цвет пикселя совпал</option>
+              <option value="text">Появился текст</option>
+              <option value="image">Найдена картинка</option>
+            </select>
+          </div>
+          <div class="field" id="stopTriggerColorField">
+            <div class="row">
+              <button id="stopTriggerPickPointBtn" class="secondary-btn">Точка проверки</button>
+              <button id="stopTriggerSampleBtn" class="secondary-btn">Взять цвет с этой точки</button>
+              <span id="stopTriggerSwatch" class="color-swatch"></span>
+            </div>
+            <p class="hint" id="stopTriggerPointHint">Точка не выбрана.</p>
+            <div class="slider-row">
+              <input type="range" id="stopTriggerToleranceSlider" min="0" max="150" step="1" />
+              <input type="number" id="stopTriggerTolerance" min="0" max="150" step="1" class="slider-number" />
+            </div>
+          </div>
+          <div class="field" id="stopTriggerTextField" hidden>
+            <div class="row">
+              <button id="stopTriggerPickRegionBtn" class="secondary-btn">Область проверки</button>
+            </div>
+            <p class="hint" id="stopTriggerRegionHint">Область не выбрана.</p>
+            <input type="text" id="stopTriggerExpected" placeholder="например: Уровень пройден" />
+          </div>
+          <div class="field" id="stopTriggerImageField" hidden>
+            <div class="row">
+              <button id="stopTriggerPickTemplateBtn" class="secondary-btn">Выделить образец</button>
+            </div>
+            <p class="hint" id="stopTriggerTemplateHint">Образец не выбран.</p>
           </div>
         </section>
       </div>
@@ -559,6 +614,37 @@
           <p class="hint">Область выбирай так, чтобы в неё попадало только само значение (без
             лишнего текста рядом) — точность распознавания заметно выше на маленькой чистой
             области, чем на большом куске экрана.</p>
+        </section>
+
+        <section>
+          <h2>🤖 Авто-действие при срабатывании порога</h2>
+          <p class="hint">Не просто уведомить, а сразу выполнить действие самому — например, число
+            упало ниже цены → сам жмёт «купить». Срабатывает в тот же момент, что и уведомление
+            выше, только если задан порог (не «на любое изменение»).</p>
+          <label class="switch-row">
+            <span>Выполнять действие</span>
+            <span class="switch">
+              <input type="checkbox" id="valueWatcherActionEnabled" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+          <div class="field">
+            <label for="valueWatcherActionType">Действие</label>
+            <select id="valueWatcherActionType">
+              <option value="click">Клик в точке</option>
+              <option value="key">Нажать клавишу</option>
+            </select>
+          </div>
+          <div class="field" id="valueWatcherActionPointField">
+            <button id="valueWatcherActionPickPointBtn" class="secondary-btn">Точка клика</button>
+            <p class="hint" id="valueWatcherActionPointHint">Точка не выбрана.</p>
+          </div>
+          <div class="field" id="valueWatcherActionKeyField" hidden>
+            <div class="row">
+              <span class="key-name" id="valueWatcherActionKeyName">Space</span>
+              <button id="valueWatcherActionSetKeyBtn" class="secondary-btn">Установить клавишу</button>
+            </div>
+          </div>
         </section>
 
         <section>

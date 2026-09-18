@@ -181,6 +181,8 @@ function updateProUI() {
   document.getElementById("valueWatcherBadge").hidden = proUnlocked;
   document.getElementById("valueWatcherTabBadge").hidden = proUnlocked;
   document.getElementById("textTriggerBadge").hidden = proUnlocked;
+  document.getElementById("smoothMovementBadge").hidden = proUnlocked;
+  document.getElementById("stopTriggerBadge").hidden = proUnlocked;
   document.getElementById("recordBadge").hidden = proUnlocked;
   document.getElementById("recordTabBadge").hidden = proUnlocked;
   document.getElementById("idleStartBadge").hidden = proUnlocked;
@@ -242,6 +244,20 @@ function updateProUI() {
     "valueWatcherNotifyTelegram",
     "valueWatcherThresholdMode",
     "valueWatcherThresholdValue",
+    "smoothMovementEnabled",
+    "stopTriggerEnabled",
+    "stopTriggerType",
+    "stopTriggerPickPointBtn",
+    "stopTriggerSampleBtn",
+    "stopTriggerToleranceSlider",
+    "stopTriggerTolerance",
+    "stopTriggerPickRegionBtn",
+    "stopTriggerExpected",
+    "stopTriggerPickTemplateBtn",
+    "valueWatcherActionEnabled",
+    "valueWatcherActionType",
+    "valueWatcherActionPickPointBtn",
+    "valueWatcherActionSetKeyBtn",
   ];
   for (const id of proOnlyIds) document.getElementById(id).disabled = !proUnlocked;
 
@@ -304,6 +320,7 @@ function loadIntoForm() {
 
   document.getElementById("turboModeEnabled").checked = !!settings.turboMode;
   document.getElementById("nativeTurboModeEnabled").checked = !!settings.nativeTurboMode;
+  document.getElementById("smoothMovementEnabled").checked = !!settings.smoothMovement;
   updateTurboModeHint();
   document.getElementById("sequenceClickAllEnabled").checked = !!settings.sequenceClickAll;
 
@@ -317,6 +334,7 @@ function loadIntoForm() {
 
   renderTextTrigger();
   renderImageTrigger();
+  renderStopTrigger();
   renderValueWatcher();
 
   document.getElementById("antiAfkEnabled").checked = !!settings.antiAfkEnabled;
@@ -379,6 +397,35 @@ function renderImageTrigger() {
   hint.textContent = trigger.templateFile ? `Образец: ${trigger.width}×${trigger.height}` : "Образец не выбран.";
 }
 
+function renderStopTrigger() {
+  const cfg = settings.stopTrigger || {};
+  document.getElementById("stopTriggerEnabled").checked = !!cfg.enabled;
+  const type = cfg.type || "color";
+  document.getElementById("stopTriggerType").value = type;
+  document.getElementById("stopTriggerColorField").hidden = type !== "color";
+  document.getElementById("stopTriggerTextField").hidden = type !== "text";
+  document.getElementById("stopTriggerImageField").hidden = type !== "image";
+
+  const swatch = document.getElementById("stopTriggerSwatch");
+  swatch.style.background = cfg.color ? `rgb(${cfg.color.r}, ${cfg.color.g}, ${cfg.color.b})` : "";
+  const pointParts = [];
+  pointParts.push(cfg.point ? `Точка: ${cfg.point.x}, ${cfg.point.y}` : "Точка не выбрана.");
+  pointParts.push(cfg.color ? `Цвет: rgb(${cfg.color.r}, ${cfg.color.g}, ${cfg.color.b})` : "Цвет не взят.");
+  document.getElementById("stopTriggerPointHint").textContent = pointParts.join(" ");
+  const tolerance = cfg.tolerance ?? 30;
+  document.getElementById("stopTriggerToleranceSlider").value = Math.min(150, tolerance);
+  document.getElementById("stopTriggerTolerance").value = tolerance;
+
+  document.getElementById("stopTriggerExpected").value = cfg.expectedText || "";
+  document.getElementById("stopTriggerRegionHint").textContent = cfg.region
+    ? `Область: ${cfg.region.width}×${cfg.region.height} в точке ${cfg.region.x}, ${cfg.region.y}`
+    : "Область не выбрана.";
+
+  document.getElementById("stopTriggerTemplateHint").textContent = cfg.templateFile
+    ? `Образец: ${cfg.width}×${cfg.height}`
+    : "Образец не выбран.";
+}
+
 function renderValueWatcher() {
   const cfg = settings.valueWatcher || {};
   document.getElementById("valueWatcherEnabled").checked = !!cfg.enabled;
@@ -394,6 +441,17 @@ function renderValueWatcher() {
     : "Область не выбрана.";
   document.getElementById("valueWatcherCurrent").textContent = cfg.lastValue || "—";
   renderValueWatcherHistory(cfg.history || []);
+
+  const action = cfg.action || {};
+  document.getElementById("valueWatcherActionEnabled").checked = !!action.enabled;
+  const actionType = action.type || "click";
+  document.getElementById("valueWatcherActionType").value = actionType;
+  document.getElementById("valueWatcherActionPointField").hidden = actionType !== "click";
+  document.getElementById("valueWatcherActionKeyField").hidden = actionType !== "key";
+  document.getElementById("valueWatcherActionPointHint").textContent = action.point
+    ? `Точка: ${action.point.x}, ${action.point.y}`
+    : "Точка не выбрана.";
+  document.getElementById("valueWatcherActionKeyName").textContent = keyLabel(action.keyToPress);
 }
 
 function renderValueWatcherHistory(history) {
@@ -830,6 +888,113 @@ function bindHandlers() {
   };
   document.getElementById("imageTriggerConfidenceSlider").addEventListener("change", (e) => saveImageConfidence(e.target.value));
   document.getElementById("imageTriggerConfidence").addEventListener("change", (e) => saveImageConfidence(e.target.value));
+
+  // Плавное движение мыши
+  document.getElementById("smoothMovementEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ smoothMovement: e.target.checked });
+  });
+
+  // Стоп-триггер
+  document.getElementById("stopTriggerEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ stopTrigger: { ...settings.stopTrigger, enabled: e.target.checked } });
+  });
+  document.getElementById("stopTriggerType").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ stopTrigger: { ...settings.stopTrigger, type: e.target.value } });
+    renderStopTrigger();
+  });
+  document.getElementById("stopTriggerPickPointBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const point = await window.api.pickPoint();
+    if (point) {
+      await save({ stopTrigger: { ...settings.stopTrigger, point } });
+      renderStopTrigger();
+    }
+  });
+  document.getElementById("stopTriggerSampleBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const point = settings.stopTrigger && settings.stopTrigger.point;
+    if (!point) {
+      document.getElementById("stopTriggerPointHint").textContent = "Сначала выбери точку проверки.";
+      return;
+    }
+    const color = await window.api.sampleColor(point);
+    if (color) {
+      await save({ stopTrigger: { ...settings.stopTrigger, color } });
+      renderStopTrigger();
+    }
+  });
+  document.getElementById("stopTriggerToleranceSlider").addEventListener("input", (e) => {
+    document.getElementById("stopTriggerTolerance").value = e.target.value;
+  });
+  const saveStopTriggerTolerance = async (v) => {
+    const tolerance = Math.max(0, Math.min(150, parseInt(v, 10) || 0));
+    document.getElementById("stopTriggerToleranceSlider").value = tolerance;
+    document.getElementById("stopTriggerTolerance").value = tolerance;
+    await save({ stopTrigger: { ...settings.stopTrigger, tolerance } });
+  };
+  document.getElementById("stopTriggerToleranceSlider").addEventListener("change", (e) => saveStopTriggerTolerance(e.target.value));
+  document.getElementById("stopTriggerTolerance").addEventListener("change", (e) => saveStopTriggerTolerance(e.target.value));
+  document.getElementById("stopTriggerPickRegionBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickStopTriggerRegion();
+    if (result.ok) {
+      await save({ stopTrigger: { ...settings.stopTrigger, region: result.region } });
+      renderStopTrigger();
+    }
+  });
+  document.getElementById("stopTriggerExpected").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ stopTrigger: { ...settings.stopTrigger, expectedText: e.target.value } });
+  });
+  document.getElementById("stopTriggerPickTemplateBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const result = await window.api.pickStopTriggerTemplate();
+    if (result.ok) {
+      await save({
+        stopTrigger: {
+          ...settings.stopTrigger,
+          templateFile: result.templateFile,
+          width: result.width,
+          height: result.height,
+        },
+      });
+      renderStopTrigger();
+    }
+  });
+
+  // Value Watcher — авто-действие при пороге
+  document.getElementById("valueWatcherActionEnabled").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ valueWatcher: { ...settings.valueWatcher, action: { ...settings.valueWatcher.action, enabled: e.target.checked } } });
+  });
+  document.getElementById("valueWatcherActionType").addEventListener("change", async (e) => {
+    if (!proUnlocked) return;
+    await save({ valueWatcher: { ...settings.valueWatcher, action: { ...settings.valueWatcher.action, type: e.target.value } } });
+    renderValueWatcher();
+  });
+  document.getElementById("valueWatcherActionPickPointBtn").addEventListener("click", async () => {
+    if (!proUnlocked) return;
+    const point = await window.api.pickPoint();
+    if (point) {
+      await save({ valueWatcher: { ...settings.valueWatcher, action: { ...settings.valueWatcher.action, point } } });
+      renderValueWatcher();
+    }
+  });
+  document.getElementById("valueWatcherActionSetKeyBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("valueWatcherActionSetKeyBtn");
+    btn.disabled = true;
+    btn.textContent = "Нажми клавишу…";
+    const captured = await window.api.captureKey();
+    btn.disabled = false;
+    btn.textContent = "Установить клавишу";
+    if (captured && captured.name) {
+      await save({ valueWatcher: { ...settings.valueWatcher, action: { ...settings.valueWatcher.action, keyToPress: captured } } });
+      document.getElementById("valueWatcherActionKeyName").textContent = keyLabel(captured);
+    }
+  });
 
   // Наблюдатель значений
   document.getElementById("valueWatcherEnabled").addEventListener("change", async (e) => {

@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld("api", {
   pickImageTriggerTemplate: () => ipcRenderer.invoke("imageTrigger:pickTemplate"),
   pickValueWatcherRegion: () => ipcRenderer.invoke("valueWatcher:pickRegion"),
   clearValueWatcherHistory: () => ipcRenderer.invoke("valueWatcher:clearHistory"),
+  pickStopTriggerRegion: () => ipcRenderer.invoke("stopTrigger:pickRegion"),
+  pickStopTriggerTemplate: () => ipcRenderer.invoke("stopTrigger:pickTemplate"),
   onValueWatcherChanged: (callback) => ipcRenderer.on("valueWatcher:changed", (_e, payload) => callback(payload)),
 
   startRecordingScreen: () => ipcRenderer.invoke("record:start"),

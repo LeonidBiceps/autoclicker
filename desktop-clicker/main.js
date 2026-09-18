@@ -137,6 +137,41 @@ async function clickButton(settings) {
   }
 }
 
+// Плавное перемещение курсора вместо мгновенного телепорта (Pro) — с ускорением/замедлением
+// (smoothstep), а не линейно. Число шагов растёт с расстоянием (чтобы длинные перемещения не
+// выглядели рублено), общая длительность фиксирована (~150мс) — ощущается как обычное движение
+// мыши человеком. Для игр/сервисов с антифродом, которые считают мгновенный прыжок курсора
+// подозрительным. Ощутимо медленнее телепорта — несовместимо с турбо-режимом по духу (см.
+// canUseNativeTurbo — гейтит нативный турбо; обычный JS-турбо тоже фактически замедлится, если
+// включить оба сразу, но явно не блокируем — пользователь сам решает такой компромисс).
+async function smoothMoveTo(target) {
+  const current = await mouse.getPosition();
+  const dx = target.x - current.x;
+  const dy = target.y - current.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  if (distance < 2) {
+    await mouse.setPosition(new Point(target.x, target.y));
+    return;
+  }
+  const steps = Math.min(30, Math.max(6, Math.round(distance / 15)));
+  const totalMs = 150;
+  const stepMs = totalMs / steps;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const eased = t * t * (3 - 2 * t); // smoothstep
+    await mouse.setPosition(new Point(Math.round(current.x + dx * eased), Math.round(current.y + dy * eased)));
+    if (i < steps) await sleep(stepMs);
+  }
+}
+
+async function moveMouseTo(point, settings) {
+  if (proUnlocked && settings.smoothMovement) {
+    await smoothMoveTo(point);
+  } else {
+    await mouse.setPosition(new Point(point.x, point.y));
+  }
+}
+
 async function performClick() {
   const settings = store.getAll();
 
@@ -153,7 +188,7 @@ async function performClick() {
   if (settings.mode === "sequence" && proUnlocked && settings.sequenceClickAll && settings.sequencePoints.length > 0) {
     for (const rawPoint of settings.sequencePoints) {
       const point = applyJitter(rawPoint, settings);
-      await mouse.setPosition(new Point(point.x, point.y));
+      await moveMouseTo(point, settings);
       await clickButton(settings);
     }
     return;
@@ -171,7 +206,7 @@ async function performClick() {
       point = { x: current.x, y: current.y };
     }
     point = applyJitter(point, settings);
-    await mouse.setPosition(new Point(point.x, point.y));
+    await moveMouseTo(point, settings);
   }
 
   await clickButton(settings);
@@ -327,6 +362,60 @@ function imageConditionMet(settings) {
   return imageTriggerLastMatch;
 }
 
+// --- Стоп-триггер — полностью останавливает кликер по условию (Pro) ---
+//
+// В отличие от триггеров выше (цвет/текст/картинка), которые лишь пропускают ОДИН клик, пока
+// условие не выполнено, стоп-триггер останавливает кликер целиком, как только условие ВЫПОЛНЕНО —
+// «уровень пройден», «инвентарь полон», всплывшая капча/окно ошибки. Работает и вместе с нативным
+// турбо (который сам по себе никакие условия не проверяет) — опрашивается отдельным таймером
+// параллельно с чем угодно ещё.
+
+let stopTriggerPolling = false;
+let stopTriggerTimer = null;
+
+async function checkStopTrigger() {
+  if (stopTriggerPolling) return;
+  const cfg = store.get("stopTrigger");
+  if (!proUnlocked || !cfg || !cfg.enabled) return;
+  stopTriggerPolling = true;
+  try {
+    let matched = false;
+    if (cfg.type === "color" && cfg.point && cfg.color) {
+      const sample = await nutScreen.colorAt(new Point(cfg.point.x, cfg.point.y));
+      const dr = sample.R - cfg.color.r;
+      const dg = sample.G - cfg.color.g;
+      const db = sample.B - cfg.color.b;
+      matched = Math.sqrt(dr * dr + dg * dg + db * db) <= cfg.tolerance;
+    } else if (cfg.type === "text" && cfg.region && cfg.expectedText) {
+      const result = await runOcr(cfg.region, cfg.lang || "rus+eng");
+      matched = result.ok && (result.text || "").toLowerCase().includes(cfg.expectedText.toLowerCase());
+    } else if (cfg.type === "image" && cfg.templateFile) {
+      try {
+        await nutScreen.find(imageResource(cfg.templateFile), { confidence: cfg.confidence || 0.9 });
+        matched = true;
+      } catch (e) {
+        matched = false; // find() отклоняет промис, если картинка не найдена — штатный случай
+      }
+    }
+    if (matched) {
+      stopClicking("Остановлено: сработал стоп-триггер");
+    }
+  } finally {
+    stopTriggerPolling = false;
+  }
+}
+
+function startStopTriggerPolling() {
+  stopStopTriggerPolling();
+  checkStopTrigger();
+  stopTriggerTimer = setInterval(() => checkStopTrigger(), 1500);
+}
+
+function stopStopTriggerPolling() {
+  if (stopTriggerTimer) clearInterval(stopTriggerTimer);
+  stopTriggerTimer = null;
+}
+
 function checkAutoStop(settings) {
   if (!proUnlocked && sessionClicks >= FREE_SESSION_CLICK_CAP) {
     stopClicking(`Бесплатная версия: лимит ${FREE_SESSION_CLICK_CAP} кликов за запуск. Pro снимает ограничение.`);
@@ -404,6 +493,7 @@ function canUseNativeTurbo(settings) {
   // Клавиатура уже сегодня игнорирует mode/разброс позиции/точку и в обычном JS-цикле
   // (performClick() уходит на неё веткой раньше любых проверок ниже) — проверять тут нечего сверх
   // общих условий выше.
+  if (settings.smoothMovement) return false;
   if (settings.actionType === "keyboard") return true;
   if (settings.actionType !== "mouse") return false;
   // "sequence" не поддержан: нативный разброс позиции крутится вокруг ОДНОЙ базовой точки,
@@ -487,6 +577,7 @@ function startClicking() {
     startImageTriggerPolling();
     scheduleNext();
   }
+  startStopTriggerPolling();
   logActivity("🟢 Кликер запущен");
   notifyTelegram("🟢 Кликер запущен");
 }
@@ -498,6 +589,7 @@ function stopClicking(note) {
   finishNativeTurbo();
   stopTextTriggerPolling();
   stopImageTriggerPolling();
+  stopStopTriggerPolling();
   sendStatus();
   destroyHud();
   if (note) sendNote(note);
@@ -1135,11 +1227,31 @@ async function valueWatcherPollTick() {
     if (previous !== null && shouldNotifyThreshold(fresh, previous, value)) {
       logActivity(`📊 Значение изменилось: ${previous} → ${value}`);
       if (fresh.notifyTelegram) notifyTelegram(`📊 Значение изменилось: ${previous} → ${value}`);
+      await performValueWatcherAction(fresh.action);
     }
   } catch (e) {
     // сбой одного опроса не должен останавливать наблюдение целиком
   } finally {
     valueWatcherPolling = false;
+  }
+}
+
+// Не просто уведомить при срабатывании порога, а сразу выполнить действие самому (Pro) — например,
+// цена упала ниже нужной → сам жмёт "купить". Срабатывает в тот же момент, что и уведомление выше
+// (на переходе в зону, не на каждом опросе). Сбой действия не должен ронять сам поллинг наблюдателя.
+async function performValueWatcherAction(action) {
+  if (!action || !action.enabled || !proUnlocked) return;
+  try {
+    if (action.type === "click" && action.point) {
+      await mouse.setPosition(new Point(action.point.x, action.point.y));
+      await nativeMouse.click(Button.LEFT);
+    } else if (action.type === "key" && action.keyToPress) {
+      const key = resolveNutjsKey(action.keyToPress);
+      await nativeKeyboard.pressKey(key);
+      await nativeKeyboard.releaseKey(key);
+    }
+  } catch (e) {
+    // сбой автодействия не должен ронять сам поллинг наблюдателя
   }
 }
 
@@ -2027,6 +2139,29 @@ ipcMain.handle("valueWatcher:pickRegion", async () => {
 ipcMain.handle("valueWatcher:clearHistory", () => {
   const cfg = store.get("valueWatcher");
   store.set({ valueWatcher: { ...cfg, history: [], lastValue: null } });
+});
+
+ipcMain.handle("stopTrigger:pickRegion", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  return { ok: true, region };
+});
+
+// Отдельный образец картинки для стоп-триггера — та же механика, что и imageTrigger:pickTemplate,
+// но кладём в ту же общую папку шаблонов (baseName содержит timestamp — коллизий не бывает).
+ipcMain.handle("stopTrigger:pickTemplate", async () => {
+  if (!proUnlocked) return { ok: false, error: "pro-required" };
+  const region = await pickRegion();
+  if (!region || region.width < 4 || region.height < 4) return { ok: false, error: "cancelled" };
+  const dir = getImageTemplatesDir();
+  const baseName = `template-${Date.now()}`;
+  try {
+    await nutScreen.captureRegion(baseName, new Region(region.x, region.y, region.width, region.height), FileType.PNG, dir);
+    return { ok: true, templateFile: `${baseName}.png`, width: region.width, height: region.height };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // Выделяешь область с иконкой/кнопкой на экране — сохраняем её как картинку-образец (PNG) в свою
