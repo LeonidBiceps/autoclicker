@@ -1,4 +1,4 @@
-const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.1.0/MultiTool-1.1.0.exe";
+const DESKTOP_APP_URL = "https://github.com/LeonidBiceps/autoclicker/releases/download/v1.2.0/MultiTool-1.2.0.exe";
 const DONATE_URL = "https://www.donationalerts.com/r/leonidbiceps111";
 const REPO = "LeonidBiceps/autoclicker";
 
@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS = {
   profiles: {},
 };
 
-// Какие поля настроек входят в профиль/экспорт (не licenseKey — его не переносим при шаринге).
+// РљР°РєРёРµ РїРѕР»СЏ РЅР°СЃС‚СЂРѕРµРє РІС…РѕРґСЏС‚ РІ РїСЂРѕС„РёР»СЊ/СЌРєСЃРїРѕСЂС‚ (РЅРµ licenseKey вЂ” РµРіРѕ РЅРµ РїРµСЂРµРЅРѕСЃРёРј РїСЂРё С€Р°СЂРёРЅРіРµ).
 const PROFILE_FIELDS = [
   "intervalMs",
   "jitterMs",
@@ -28,7 +28,7 @@ const PROFILE_FIELDS = [
   "stopAfterMs",
 ];
 
-// verifyLicenseKey живёт в license.js (общий для content/options/popup)
+// verifyLicenseKey Р¶РёРІС‘С‚ РІ license.js (РѕР±С‰РёР№ РґР»СЏ content/options/popup)
 
 let settings = { ...DEFAULT_SETTINGS };
 let listeningForKey = false;
@@ -48,7 +48,7 @@ function fields() {
 }
 
 function keyLabel(info) {
-  if (!info) return "—";
+  if (!info) return "вЂ”";
   if (info.key === " ") return "Space";
   return info.key.length === 1 ? info.key.toUpperCase() : info.key;
 }
@@ -93,14 +93,14 @@ function renderProfileSelect() {
   const names = Object.keys(settings.profiles || {});
   select.innerHTML = names.length
     ? names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("")
-    : `<option value="">— нет сохранённых —</option>`;
+    : `<option value="">вЂ” РЅРµС‚ СЃРѕС…СЂР°РЅС‘РЅРЅС‹С… вЂ”</option>`;
 }
 
 async function refreshLicenseStatus(showMessage) {
   const message = document.getElementById("licenseMessage");
   const proStatus = document.getElementById("proStatus");
 
-  if (showMessage) message.textContent = "Проверяем…";
+  if (showMessage) message.textContent = "РџСЂРѕРІРµСЂСЏРµРјвЂ¦";
 
   const result = await verifyLicenseKey(settings.licenseKey);
   proUnlocked = result.valid;
@@ -108,16 +108,16 @@ async function refreshLicenseStatus(showMessage) {
 
   if (result.valid) {
     const until = new Date(result.payload.expiresAt).toLocaleDateString("ru-RU");
-    proStatus.textContent = `Pro активирован до ${until} — последовательность точек и разброс позиции доступны.`;
-    if (showMessage) message.textContent = "Ключ подошёл, Pro активирован.";
+    proStatus.textContent = `Pro Р°РєС‚РёРІРёСЂРѕРІР°РЅ РґРѕ ${until} вЂ” РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚СЊ С‚РѕС‡РµРє Рё СЂР°Р·Р±СЂРѕСЃ РїРѕР·РёС†РёРё РґРѕСЃС‚СѓРїРЅС‹.`;
+    if (showMessage) message.textContent = "РљР»СЋС‡ РїРѕРґРѕС€С‘Р», Pro Р°РєС‚РёРІРёСЂРѕРІР°РЅ.";
   } else {
     proStatus.textContent =
-      "Бесплатная версия. Pro открывает последовательность точек (в панели на странице) и разброс позиции клика.";
+      "Р‘РµСЃРїР»Р°С‚РЅР°СЏ РІРµСЂСЃРёСЏ. Pro РѕС‚РєСЂС‹РІР°РµС‚ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚СЊ С‚РѕС‡РµРє (РІ РїР°РЅРµР»Рё РЅР° СЃС‚СЂР°РЅРёС†Рµ) Рё СЂР°Р·Р±СЂРѕСЃ РїРѕР·РёС†РёРё РєР»РёРєР°.";
     if (showMessage) {
       message.textContent = result.expired
-        ? "Этот ключ истёк — нужен новый."
+        ? "Р­С‚РѕС‚ РєР»СЋС‡ РёСЃС‚С‘Рє вЂ” РЅСѓР¶РµРЅ РЅРѕРІС‹Р№."
         : settings.licenseKey
-        ? "Ключ не подошёл."
+        ? "РљР»СЋС‡ РЅРµ РїРѕРґРѕС€С‘Р»."
         : "";
     }
   }
@@ -133,7 +133,7 @@ function showStatus(text) {
 
 function save(partial) {
   settings = { ...settings, ...partial };
-  chrome.storage.sync.set(partial, () => showStatus("Сохранено"));
+  chrome.storage.sync.set(partial, () => showStatus("РЎРѕС…СЂР°РЅРµРЅРѕ"));
 }
 
 function loadIntoForm() {
@@ -185,7 +185,7 @@ function bindHandlers() {
 
   document.getElementById("setKeyBtn").addEventListener("click", () => {
     listeningForKey = true;
-    document.getElementById("setKeyBtn").textContent = "Нажми клавишу…";
+    document.getElementById("setKeyBtn").textContent = "РќР°Р¶РјРё РєР»Р°РІРёС€СѓвЂ¦";
   });
 
   document.addEventListener("keydown", (e) => {
@@ -193,7 +193,7 @@ function bindHandlers() {
     e.preventDefault();
     const keyToPress = { key: e.key, code: e.code, keyCode: e.keyCode };
     listeningForKey = false;
-    document.getElementById("setKeyBtn").textContent = "Установить клавишу";
+    document.getElementById("setKeyBtn").textContent = "РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РєР»Р°РІРёС€Сѓ";
     document.getElementById("keyName").textContent = keyLabel(keyToPress);
     save({ keyToPress });
   });
@@ -205,7 +205,7 @@ function bindHandlers() {
   document.getElementById("downloadDesktopBtn").addEventListener("click", () => {
     const message = document.getElementById("downloadDesktopMessage");
     if (!DESKTOP_APP_URL) {
-      message.textContent = "Ссылка ещё не настроена (DESKTOP_APP_URL в options.js).";
+      message.textContent = "РЎСЃС‹Р»РєР° РµС‰С‘ РЅРµ РЅР°СЃС‚СЂРѕРµРЅР° (DESKTOP_APP_URL РІ options.js).";
       return;
     }
     chrome.tabs.create({ url: DESKTOP_APP_URL });
@@ -214,7 +214,7 @@ function bindHandlers() {
   document.getElementById("donateForProBtn").addEventListener("click", () => {
     const message = document.getElementById("donateForProMessage");
     if (!DONATE_URL) {
-      message.textContent = "Ссылка ещё не настроена (DONATE_URL в options.js).";
+      message.textContent = "РЎСЃС‹Р»РєР° РµС‰С‘ РЅРµ РЅР°СЃС‚СЂРѕРµРЅР° (DONATE_URL РІ options.js).";
       return;
     }
     chrome.tabs.create({ url: DONATE_URL });
@@ -249,7 +249,7 @@ function bindHandlers() {
     save({ ...profile });
     loadIntoForm();
     updateActionVisibility();
-    showStatus(`Применён профиль «${name}»`);
+    showStatus(`РџСЂРёРјРµРЅС‘РЅ РїСЂРѕС„РёР»СЊ В«${name}В»`);
   });
 
   document.getElementById("deleteProfileBtn").addEventListener("click", () => {
@@ -295,9 +295,9 @@ function bindHandlers() {
       loadIntoForm();
       updateActionVisibility();
       renderProfileSelect();
-      importMessage.textContent = "Импортировано.";
+      importMessage.textContent = "РРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ.";
     } catch (err) {
-      importMessage.textContent = `Не получилось прочитать файл: ${err.message}`;
+      importMessage.textContent = `РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ С„Р°Р№Р»: ${err.message}`;
     }
     e.target.value = "";
   });
@@ -317,9 +317,9 @@ function isNewerVersion(latest, current) {
 
 async function checkForExtensionUpdate() {
   try {
-    // Не все релизы содержат .zip расширения (иногда обновляется только desktop-версия) — поэтому
-    // смотрим список релизов, а не только /releases/latest, и берём первый (самый свежий), где
-    // такой файл реально есть.
+    // РќРµ РІСЃРµ СЂРµР»РёР·С‹ СЃРѕРґРµСЂР¶Р°С‚ .zip СЂР°СЃС€РёСЂРµРЅРёСЏ (РёРЅРѕРіРґР° РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ desktop-РІРµСЂСЃРёСЏ) вЂ” РїРѕСЌС‚РѕРјСѓ
+    // СЃРјРѕС‚СЂРёРј СЃРїРёСЃРѕРє СЂРµР»РёР·РѕРІ, Р° РЅРµ С‚РѕР»СЊРєРѕ /releases/latest, Рё Р±РµСЂС‘Рј РїРµСЂРІС‹Р№ (СЃР°РјС‹Р№ СЃРІРµР¶РёР№), РіРґРµ
+    // С‚Р°РєРѕР№ С„Р°Р№Р» СЂРµР°Р»СЊРЅРѕ РµСЃС‚СЊ.
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`);
     if (!res.ok) return;
     const releases = await res.json();
@@ -334,13 +334,13 @@ async function checkForExtensionUpdate() {
     if (!isNewerVersion(latestVersion, currentVersion)) return;
 
     const banner = document.getElementById("updateBanner");
-    document.getElementById("updateBannerText").textContent = `Вышла версия ${latestVersion} (у тебя ${currentVersion})`;
+    document.getElementById("updateBannerText").textContent = `Р’С‹С€Р»Р° РІРµСЂСЃРёСЏ ${latestVersion} (Сѓ С‚РµР±СЏ ${currentVersion})`;
     banner.title =
-      "Скачай .zip, распакуй поверх старой папки и нажми «Обновить» на карточке расширения в chrome://extensions.";
+      "РЎРєР°С‡Р°Р№ .zip, СЂР°СЃРїР°РєСѓР№ РїРѕРІРµСЂС… СЃС‚Р°СЂРѕР№ РїР°РїРєРё Рё РЅР°Р¶РјРё В«РћР±РЅРѕРІРёС‚СЊВ» РЅР° РєР°СЂС‚РѕС‡РєРµ СЂР°СЃС€РёСЂРµРЅРёСЏ РІ chrome://extensions.";
     banner.href = asset.browser_download_url;
     banner.hidden = false;
   } catch (e) {
-    // нет сети или GitHub недоступен — молча пропускаем, это не блокирует работу расширения
+    // РЅРµС‚ СЃРµС‚Рё РёР»Рё GitHub РЅРµРґРѕСЃС‚СѓРїРµРЅ вЂ” РјРѕР»С‡Р° РїСЂРѕРїСѓСЃРєР°РµРј, СЌС‚Рѕ РЅРµ Р±Р»РѕРєРёСЂСѓРµС‚ СЂР°Р±РѕС‚Сѓ СЂР°СЃС€РёСЂРµРЅРёСЏ
   }
 }
 

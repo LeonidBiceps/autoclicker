@@ -405,20 +405,28 @@ function canUseNativeTurbo(settings) {
   // (performClick() уходит на неё веткой раньше любых проверок ниже) — проверять тут нечего сверх
   // общих условий выше.
   if (settings.actionType === "keyboard") return true;
-  if (settings.actionType !== "mouse" || settings.button === "double") return false;
+  if (settings.actionType !== "mouse") return false;
+  // "sequence" не поддержан: нативный разброс позиции крутится вокруг ОДНОЙ базовой точки,
+  // захваченной один раз на старте burst'а — для обхода списка точек это не подходит.
   if (settings.mode === "sequence") return false;
-  if (settings.positionJitterPx > 0) return false;
   if (settings.mode === "point" && !settings.fixedPoint) return false;
   return true;
 }
 
 function startNativeTurbo(settings) {
   const isKeyboard = settings.actionType === "keyboard";
-  const action = isKeyboard ? "key" : settings.button === "right" ? "mouse-right" : "mouse-left";
+  const action = isKeyboard
+    ? "key"
+    : settings.button === "double"
+      ? "mouse-double"
+      : settings.button === "right"
+        ? "mouse-right"
+        : "mouse-left";
   const vkCode = isKeyboard ? resolveVkCode(settings.keyToPress) : 0;
   const durationMs = settings.stopAfterMs > 0 ? settings.stopAfterMs : 0;
+  const jitterPx = !isKeyboard && settings.positionJitterPx > 0 ? settings.positionJitterPx : 0;
   const beginBurst = () => {
-    nativeClicker.startBurst(action, vkCode, 0, durationMs);
+    nativeClicker.startBurst(action, vkCode, 0, durationMs, jitterPx);
     nativeBurstActive = true;
     // Опрашиваем счётчик редко (не на каждый клик — их сотни/тысячи в секунду, сам смысл нативного
     // режима как раз в том, чтобы JS в это не лез) — только чтобы обновлять HUD и проверять лимиты
